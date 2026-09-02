@@ -1,6 +1,6 @@
 # Project J.A.R.V.I.S. Tool Fabric And Sentinel v0.4
 
-Status: proposed
+Status: approved
 
 ## Goal
 
@@ -158,6 +158,8 @@ The coordinator should:
 - Fail invalid arguments before Sentinel authorization.
 - Fail invalid arguments before tool execution.
 - Construct a Sentinel `AuthorizationRequest` using trusted descriptor metadata.
+- Populate Sentinel `AuthorizationRequest.execution_boundary` from the registered
+  `ToolDescriptor`.
 - Call Sentinel before execution.
 - Execute the tool only when Sentinel returns `ALLOW`.
 - Return an approval-required result or error when Sentinel returns `ASK`.
@@ -201,6 +203,16 @@ The policy implementation should:
 - Avoid reading user files, environment variables, or system state.
 - Return a typed `AuthorizationDecision` with an action and safe reason.
 
+The Sentinel `AuthorizationRequest` contract must evolve to include:
+
+```text
+execution_boundary = trusted ExecutionBoundary from the registered ToolDescriptor
+```
+
+The execution coordinator must always populate this value from the registered
+tool descriptor, never from caller input. Tests must prove that callers cannot
+spoof it and that Sentinel receives the trusted registered execution boundary.
+
 Suggested ownership:
 
 ```text
@@ -222,7 +234,7 @@ The tool must:
 - Use Python standard library only.
 - Require no network access.
 - Require no credentials.
-- Have side-effect level `READ` or `NONE`.
+- Have side-effect level `READ`.
 - Execute inside the `CORE` boundary.
 - Accept no meaningful user-controlled arguments.
 - Return only safe runtime metadata.
@@ -322,7 +334,7 @@ At minimum, support:
 ```text
 unknown tool = 404, code tool_not_found
 invalid arguments = 422, code tool_invalid_arguments
-approval required = 403 or 409, code tool_approval_required
+approval required = 409, code tool_approval_required
 denied by Sentinel = 403, code tool_denied
 tool execution failure = 500, code tool_execution_failed
 Sentinel execution failure = 500, code sentinel_authorization_failed
@@ -412,6 +424,7 @@ Add focused tests for:
 - `DENY` does not execute the tool.
 - Caller cannot spoof side-effect metadata.
 - Caller cannot spoof execution-boundary metadata.
+- Sentinel receives the trusted registered execution boundary.
 - Tool exception becomes a normalized failure.
 - Sentinel exception becomes a normalized failure.
 - Correlation ID is preserved when supplied.
@@ -419,8 +432,8 @@ Add focused tests for:
 - `POST /v1/tools/execute` success for `system.runtime_info`.
 - `POST /v1/tools/execute` stable unknown-tool error.
 - `POST /v1/tools/execute` stable invalid-arguments error.
-- `POST /v1/tools/execute` stable approval-required behavior.
-- `POST /v1/tools/execute` stable denied behavior.
+- `POST /v1/tools/execute` stable approval-required behavior with HTTP 409.
+- `POST /v1/tools/execute` stable denied behavior with HTTP 403.
 - Logs omit raw arguments and raw results.
 - Existing health tests remain passing.
 - Existing chat, working-memory, persistence, provider, config, and logging tests remain passing.
@@ -497,8 +510,11 @@ Documentation should include:
 - Invalid arguments fail before Sentinel authorization.
 - Invalid arguments fail before tool execution.
 - Coordinator constructs Sentinel authorization from trusted descriptor metadata.
+- Coordinator populates `AuthorizationRequest.execution_boundary` from trusted
+  registered descriptor metadata.
 - Caller cannot override a registered tool's side-effect level.
 - Caller cannot override a registered tool's execution boundary.
+- Sentinel receives the trusted registered execution boundary.
 - Sentinel is called before execution.
 - Tools execute only when Sentinel returns `ALLOW`.
 - `ASK` returns stable approval-required behavior and does not execute the tool.
@@ -507,6 +523,8 @@ Documentation should include:
 - Default Sentinel policy maps `WRITE` to `ASK`.
 - Default Sentinel policy maps `DANGEROUS` to `DENY`.
 - `system.runtime_info` is registered as a built-in tool.
+- `system.runtime_info` uses `SideEffectLevel.READ`.
+- `system.runtime_info` uses `ExecutionBoundary.CORE`.
 - `system.runtime_info` is deterministic, harmless, and standard-library-only.
 - `system.runtime_info` returns only safe runtime metadata.
 - `system.runtime_info` accepts no meaningful user-controlled arguments.
