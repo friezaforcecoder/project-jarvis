@@ -25,11 +25,17 @@ def test_event_contract_requires_timezone_aware_timestamp() -> None:
 
 
 def test_provider_contracts_are_typed_and_vendor_neutral() -> None:
-    request = ProviderRequest(prompt="Summarize status", context={"service": "jarvis-core"})
-    response = ProviderResponse(output="ok")
+    request = ProviderRequest(
+        prompt="Summarize status",
+        system_instruction="You are JARVIS.",
+        context={"service": "jarvis-core"},
+    )
+    response = ProviderResponse(output="ok", model="fake-model")
 
     assert request.prompt == "Summarize status"
+    assert request.system_instruction == "You are JARVIS."
     assert response.metadata == {}
+    assert response.model == "fake-model"
     assert ProviderCapability.TEXT.value == "text"
 
 
@@ -71,4 +77,4 @@ def test_architectural_contracts_reject_unknown_fields() -> None:
         JarvisEvent(event_type="core.started", source="tests", surprise=True)  # type: ignore[call-arg]
 
     with pytest.raises(ValidationError):
-        ProviderRequest(prompt="hello", provider="specific")  # type: ignore[call-arg]
+        ProviderRequest(prompt="hello", system_instruction="identity", provider="specific")  # type: ignore[call-arg]

@@ -9,6 +9,7 @@ from pathlib import Path
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from jarvis_core import __version__
+from jarvis_core.identity import DEFAULT_SYSTEM_INSTRUCTION
 
 _ENVIRONMENT_VARIABLES = {
     "environment": "JARVIS_ENVIRONMENT",
@@ -16,6 +17,11 @@ _ENVIRONMENT_VARIABLES = {
     "log_level": "JARVIS_LOG_LEVEL",
     "host": "JARVIS_HOST",
     "port": "JARVIS_PORT",
+    "intelligence_provider": "JARVIS_INTELLIGENCE_PROVIDER",
+    "ollama_base_url": "JARVIS_OLLAMA_BASE_URL",
+    "ollama_model": "JARVIS_OLLAMA_MODEL",
+    "provider_timeout_seconds": "JARVIS_PROVIDER_TIMEOUT_SECONDS",
+    "system_instruction": "JARVIS_SYSTEM_INSTRUCTION",
 }
 
 _LOG_LEVELS = {"DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"}
@@ -33,6 +39,11 @@ class Settings(BaseModel):
     log_level: str = Field(default="INFO")
     host: str = Field(default="127.0.0.1", min_length=1)
     port: int = Field(default=8000, ge=1, le=65535)
+    intelligence_provider: str = Field(default="ollama", min_length=1)
+    ollama_base_url: str = Field(default="http://127.0.0.1:11434", min_length=1)
+    ollama_model: str = Field(default="llama3.2", min_length=1)
+    provider_timeout_seconds: float = Field(default=30.0, gt=0)
+    system_instruction: str = Field(default=DEFAULT_SYSTEM_INSTRUCTION, min_length=1)
 
     @field_validator("database_path", mode="before")
     @classmethod
@@ -50,6 +61,19 @@ class Settings(BaseModel):
         if normalized not in _LOG_LEVELS:
             raise ValueError(f"log_level must be one of {sorted(_LOG_LEVELS)}")
         return normalized
+
+    @field_validator(
+        "intelligence_provider",
+        "ollama_base_url",
+        "ollama_model",
+        "system_instruction",
+    )
+    @classmethod
+    def strip_non_empty_string(cls, value: str) -> str:
+        stripped = value.strip()
+        if not stripped:
+            raise ValueError("value must not be empty")
+        return stripped
 
 
 def load_settings(env: Mapping[str, str] | None = None) -> Settings:
