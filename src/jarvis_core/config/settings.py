@@ -21,6 +21,7 @@ _ENVIRONMENT_VARIABLES = {
     "ollama_base_url": "JARVIS_OLLAMA_BASE_URL",
     "ollama_model": "JARVIS_OLLAMA_MODEL",
     "provider_timeout_seconds": "JARVIS_PROVIDER_TIMEOUT_SECONDS",
+    "chat_history_limit": "JARVIS_CHAT_HISTORY_LIMIT",
     "system_instruction": "JARVIS_SYSTEM_INSTRUCTION",
 }
 
@@ -43,6 +44,7 @@ class Settings(BaseModel):
     ollama_base_url: str = Field(default="http://127.0.0.1:11434", min_length=1)
     ollama_model: str = Field(default="llama3.2", min_length=1)
     provider_timeout_seconds: float = Field(default=60.0, gt=0)
+    chat_history_limit: int = Field(default=10, ge=0)
     system_instruction: str = Field(default=DEFAULT_SYSTEM_INSTRUCTION, min_length=1)
 
     @field_validator("database_path", mode="before")

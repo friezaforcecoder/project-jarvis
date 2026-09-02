@@ -5,8 +5,26 @@ import json
 import httpx
 import pytest
 
-from jarvis_core.intelligence import ProviderError, ProviderErrorCode, ProviderRequest
+from jarvis_core.intelligence import (
+    ProviderError,
+    ProviderErrorCode,
+    ProviderMessage,
+    ProviderMessageRole,
+    ProviderRequest,
+)
 from jarvis_core.intelligence.providers import OllamaProvider
+
+
+def provider_request() -> ProviderRequest:
+    return ProviderRequest(
+        messages=[
+            ProviderMessage(role=ProviderMessageRole.SYSTEM, content="You are JARVIS."),
+            ProviderMessage(role=ProviderMessageRole.USER, content="Earlier"),
+            ProviderMessage(role=ProviderMessageRole.ASSISTANT, content="Earlier response"),
+            ProviderMessage(role=ProviderMessageRole.USER, content="Hello"),
+        ],
+        correlation_id="ollama-correlation",
+    )
 
 
 @pytest.mark.anyio
@@ -32,13 +50,7 @@ async def test_ollama_provider_constructs_non_streaming_chat_request() -> None:
         transport=httpx.MockTransport(handler),
     )
 
-    response = await provider.generate(
-        ProviderRequest(
-            prompt="Hello",
-            system_instruction="You are JARVIS.",
-            correlation_id="ollama-correlation",
-        )
-    )
+    response = await provider.generate(provider_request())
 
     assert response.output == "Hello from Ollama."
     assert response.model == "llama3.2"
@@ -48,6 +60,8 @@ async def test_ollama_provider_constructs_non_streaming_chat_request() -> None:
             "stream": False,
             "messages": [
                 {"role": "system", "content": "You are JARVIS."},
+                {"role": "user", "content": "Earlier"},
+                {"role": "assistant", "content": "Earlier response"},
                 {"role": "user", "content": "Hello"},
             ],
         }
@@ -67,7 +81,7 @@ async def test_ollama_provider_normalizes_timeout() -> None:
     )
 
     with pytest.raises(ProviderError) as exc_info:
-        await provider.generate(ProviderRequest(prompt="Hello", system_instruction="Identity"))
+        await provider.generate(provider_request())
 
     assert exc_info.value.code is ProviderErrorCode.TIMEOUT
     assert exc_info.value.provider_id == "ollama"
@@ -87,7 +101,7 @@ async def test_ollama_provider_normalizes_connection_errors() -> None:
     )
 
     with pytest.raises(ProviderError) as exc_info:
-        await provider.generate(ProviderRequest(prompt="Hello", system_instruction="Identity"))
+        await provider.generate(provider_request())
 
     assert exc_info.value.code is ProviderErrorCode.UNAVAILABLE
     assert exc_info.value.provider_id == "ollama"
@@ -106,7 +120,25 @@ async def test_ollama_provider_normalizes_invalid_response() -> None:
     )
 
     with pytest.raises(ProviderError) as exc_info:
-        await provider.generate(ProviderRequest(prompt="Hello", system_instruction="Identity"))
+        await provider.generate(provider_request())
+
+    assert exc_info.value.code is ProviderErrorCode.INVALID_RESPONSE
+
+
+@pytest.mark.anyio
+async def test_ollama_provider_normalizes_empty_assistant_content() -> None:
+    async def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(200, json={"message": {"role": "assistant", "content": ""}})
+
+    provider = OllamaProvider(
+        base_url="http://ollama.test",
+        model="llama3.2",
+        timeout_seconds=3,
+        transport=httpx.MockTransport(handler),
+    )
+
+    with pytest.raises(ProviderError) as exc_info:
+        await provider.generate(provider_request())
 
     assert exc_info.value.code is ProviderErrorCode.INVALID_RESPONSE
 
@@ -124,7 +156,7 @@ async def test_ollama_provider_normalizes_non_success_response() -> None:
     )
 
     with pytest.raises(ProviderError) as exc_info:
-        await provider.generate(ProviderRequest(prompt="Hello", system_instruction="Identity"))
+        await provider.generate(provider_request())
 
     assert exc_info.value.code is ProviderErrorCode.REQUEST_FAILED
     assert exc_info.value.safe_metadata == {"provider_status_code": 500}

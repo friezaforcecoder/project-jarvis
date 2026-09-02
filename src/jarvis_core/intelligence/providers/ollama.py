@@ -8,6 +8,7 @@ import httpx
 
 from jarvis_core.intelligence.contracts import (
     ProviderCapability,
+    ProviderMessage,
     ProviderRequest,
     ProviderResponse,
 )
@@ -48,10 +49,7 @@ class OllamaProvider:
         payload = {
             "model": self._model,
             "stream": False,
-            "messages": [
-                {"role": "system", "content": request.system_instruction},
-                {"role": "user", "content": request.prompt},
-            ],
+            "messages": [self._to_ollama_message(message) for message in request.messages],
         }
 
         try:
@@ -98,7 +96,7 @@ class OllamaProvider:
             raise self._invalid_response()
 
         content = message.get("content")
-        if not isinstance(content, str):
+        if not isinstance(content, str) or not content.strip():
             raise self._invalid_response()
 
         model = data.get("model", self._model)
@@ -124,3 +122,6 @@ class OllamaProvider:
             provider_id=self.provider_id,
             model=self._model,
         )
+
+    def _to_ollama_message(self, message: ProviderMessage) -> dict[str, str]:
+        return {"role": message.role.value, "content": message.content}

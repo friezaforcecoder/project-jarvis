@@ -3,12 +3,16 @@
 from __future__ import annotations
 
 from typing import Literal
-from uuid import uuid4
+from uuid import UUID, uuid4
 
 from fastapi import APIRouter, Request
 from pydantic import BaseModel, ConfigDict, Field
 from starlette.responses import JSONResponse
 
+from jarvis_core.conversations import (
+    ConversationPersistenceError,
+    ConversationSessionNotFoundError,
+)
 from jarvis_core.intelligence import ChatService, ProviderError, ProviderErrorCode
 
 router = APIRouter(tags=["chat"])
@@ -29,6 +33,7 @@ class ChatRequest(BaseModel):
 
     message: str = Field(min_length=1)
     correlation_id: str | None = Field(default=None, min_length=1)
+    session_id: UUID | None = None
 
 
 class ChatResponse(BaseModel):
@@ -40,6 +45,7 @@ class ChatResponse(BaseModel):
     provider: str = Field(min_length=1)
     model: str = Field(min_length=1)
     correlation_id: str = Field(min_length=1)
+    session_id: str = Field(min_length=1)
 
 
 class ChatError(BaseModel):
@@ -54,13 +60,34 @@ class ChatError(BaseModel):
     model: str | None = Field(default=None, min_length=1)
 
 
+class SessionError(BaseModel):
+    """Safe API error details for session failures."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    code: Literal["session_not_found"]
+    message: str = Field(min_length=1)
+    correlation_id: str = Field(min_length=1)
+    session_id: str = Field(min_length=1)
+
+
+class PersistenceError(BaseModel):
+    """Safe API error details for persistence failures."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    code: Literal["conversation_persistence_failed"]
+    message: str = Field(min_length=1)
+    correlation_id: str = Field(min_length=1)
+
+
 class ChatErrorResponse(BaseModel):
     """Stable error envelope for chat provider failures."""
 
     model_config = ConfigDict(extra="forbid")
 
     status: Literal["error"] = "error"
-    error: ChatError
+    error: ChatError | SessionError | PersistenceError
 
 
 @router.post(
@@ -68,6 +95,7 @@ class ChatErrorResponse(BaseModel):
     response_model=ChatResponse,
     responses={
         500: {"model": ChatErrorResponse},
+        404: {"model": ChatErrorResponse},
         502: {"model": ChatErrorResponse},
         504: {"model": ChatErrorResponse},
     },
@@ -82,7 +110,27 @@ async def post_chat(chat_request: ChatRequest, request: Request) -> ChatResponse
         result = await chat_service.chat(
             message=chat_request.message,
             correlation_id=correlation_id,
+            session_id=str(chat_request.session_id) if chat_request.session_id else None,
         )
+    except ConversationSessionNotFoundError as exc:
+        error = ChatErrorResponse(
+            error=SessionError(
+                code=exc.code.value,
+                message=exc.safe_message,
+                correlation_id=correlation_id,
+                session_id=exc.session_id,
+            )
+        )
+        return JSONResponse(status_code=404, content=error.model_dump(mode="json"))
+    except ConversationPersistenceError as exc:
+        error = ChatErrorResponse(
+            error=PersistenceError(
+                code=exc.code.value,
+                message=exc.safe_message,
+                correlation_id=correlation_id,
+            )
+        )
+        return JSONResponse(status_code=500, content=error.model_dump(mode="json"))
     except ProviderError as exc:
         error = ChatErrorResponse(
             error=ChatError(
@@ -103,4 +151,5 @@ async def post_chat(chat_request: ChatRequest, request: Request) -> ChatResponse
         provider=result.provider,
         model=result.model,
         correlation_id=result.correlation_id,
+        session_id=result.session_id,
     )

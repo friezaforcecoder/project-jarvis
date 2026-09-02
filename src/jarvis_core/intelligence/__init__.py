@@ -3,6 +3,8 @@
 from jarvis_core.intelligence.contracts import (
     IntelligenceProvider,
     ProviderCapability,
+    ProviderMessage,
+    ProviderMessageRole,
     ProviderRequest,
     ProviderResponse,
 )
@@ -17,6 +19,8 @@ __all__ = [
     "ProviderError",
     "ProviderErrorCode",
     "ProviderCapability",
+    "ProviderMessage",
+    "ProviderMessageRole",
     "ProviderRegistry",
     "ProviderRequest",
     "ProviderResponse",

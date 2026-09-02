@@ -13,6 +13,7 @@ from jarvis_core.identity import DEFAULT_SYSTEM_INSTRUCTION
 def test_default_settings_use_bootstrap_values() -> None:
     settings = Settings()
 
+    assert __version__ == "0.3.0"
     assert settings.service_name == "jarvis-core"
     assert settings.version == __version__
     assert settings.environment == "local"
@@ -22,6 +23,7 @@ def test_default_settings_use_bootstrap_values() -> None:
     assert settings.ollama_base_url == "http://127.0.0.1:11434"
     assert settings.ollama_model == "llama3.2"
     assert settings.provider_timeout_seconds == 60.0
+    assert settings.chat_history_limit == 10
     assert settings.system_instruction == DEFAULT_SYSTEM_INSTRUCTION
 
 
@@ -37,6 +39,7 @@ def test_load_settings_reads_environment_mapping() -> None:
             "JARVIS_OLLAMA_BASE_URL": "http://ollama.test:11434",
             "JARVIS_OLLAMA_MODEL": "jarvis-test",
             "JARVIS_PROVIDER_TIMEOUT_SECONDS": "4.5",
+            "JARVIS_CHAT_HISTORY_LIMIT": "7",
             "JARVIS_SYSTEM_INSTRUCTION": "Custom identity.",
         }
     )
@@ -50,6 +53,7 @@ def test_load_settings_reads_environment_mapping() -> None:
     assert settings.ollama_base_url == "http://ollama.test:11434"
     assert settings.ollama_model == "jarvis-test"
     assert settings.provider_timeout_seconds == 4.5
+    assert settings.chat_history_limit == 7
     assert settings.system_instruction == "Custom identity."
 
 
@@ -61,3 +65,8 @@ def test_settings_reject_invalid_log_level() -> None:
 def test_settings_reject_invalid_provider_timeout() -> None:
     with pytest.raises(ValidationError):
         Settings(provider_timeout_seconds=0)
+
+
+def test_settings_reject_invalid_chat_history_limit() -> None:
+    with pytest.raises(ValidationError):
+        Settings(chat_history_limit=-1)
