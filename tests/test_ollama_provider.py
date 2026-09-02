@@ -126,6 +126,24 @@ async def test_ollama_provider_normalizes_invalid_response() -> None:
 
 
 @pytest.mark.anyio
+async def test_ollama_provider_normalizes_empty_assistant_content() -> None:
+    async def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(200, json={"message": {"role": "assistant", "content": ""}})
+
+    provider = OllamaProvider(
+        base_url="http://ollama.test",
+        model="llama3.2",
+        timeout_seconds=3,
+        transport=httpx.MockTransport(handler),
+    )
+
+    with pytest.raises(ProviderError) as exc_info:
+        await provider.generate(provider_request())
+
+    assert exc_info.value.code is ProviderErrorCode.INVALID_RESPONSE
+
+
+@pytest.mark.anyio
 async def test_ollama_provider_normalizes_non_success_response() -> None:
     async def handler(request: httpx.Request) -> httpx.Response:
         return httpx.Response(500, json={"error": "internal"})

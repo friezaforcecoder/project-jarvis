@@ -68,6 +68,27 @@ _MIGRATIONS: tuple[tuple[str, Callable[[sqlite3.Connection], None]], ...] = (
 )
 
 
+def _apply_migration(
+    connection: sqlite3.Connection,
+    migration_name: str,
+    migration: Callable[[sqlite3.Connection], None],
+) -> None:
+    """Apply and record one migration in an explicit transaction."""
+
+    try:
+        connection.execute("BEGIN")
+        migration(connection)
+        connection.execute(
+            "INSERT INTO schema_migrations (name) VALUES (?)",
+            (migration_name,),
+        )
+        connection.execute("COMMIT")
+    except Exception:
+        if connection.in_transaction:
+            connection.execute("ROLLBACK")
+        raise
+
+
 def initialize_sqlite(settings: Settings) -> Path:
     """Create the configured SQLite database and bootstrap schema."""
 
@@ -75,7 +96,7 @@ def initialize_sqlite(settings: Settings) -> Path:
     database_path.parent.mkdir(parents=True, exist_ok=True)
 
     try:
-        with sqlite3.connect(database_path) as connection:
+        with sqlite3.connect(database_path, isolation_level=None) as connection:
             connection.execute("PRAGMA foreign_keys = ON")
             _ensure_migration_table(connection)
             for migration_name, migration in _MIGRATIONS:
@@ -86,12 +107,7 @@ def initialize_sqlite(settings: Settings) -> Path:
                 if already_applied:
                     continue
 
-                with connection:
-                    migration(connection)
-                    connection.execute(
-                        "INSERT INTO schema_migrations (name) VALUES (?)",
-                        (migration_name,),
-                    )
+                _apply_migration(connection, migration_name, migration)
     except sqlite3.Error as exc:
         raise RuntimeError(f"failed to initialize SQLite database at {database_path}") from exc
 

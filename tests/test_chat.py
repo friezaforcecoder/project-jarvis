@@ -3,7 +3,7 @@ from __future__ import annotations
 import logging
 import sqlite3
 from pathlib import Path
-from uuid import UUID
+from uuid import UUID, uuid4
 
 import anyio
 import pytest
@@ -11,6 +11,7 @@ from fastapi.testclient import TestClient
 
 from jarvis_core.api import create_app
 from jarvis_core.config import Settings
+from jarvis_core.conversations import ConversationSessionNotFoundError
 from jarvis_core.intelligence import (
     ChatService,
     ProviderCapability,
@@ -41,6 +42,16 @@ class FakeProvider:
         if self.error:
             raise self.error
         return ProviderResponse(output=self.output, model="fake-model")
+
+
+class EmptyProviderResponseProvider(FakeProvider):
+    async def generate(self, request: ProviderRequest) -> ProviderResponse:
+        self.requests.append(request)
+        return ProviderResponse.model_construct(
+            output="",
+            model="fake-model",
+            metadata={},
+        )
 
 
 class SlowTrackingProvider(FakeProvider):
@@ -377,6 +388,55 @@ def test_provider_failure_leaves_existing_session_unchanged(tmp_path) -> None:
     ]
 
 
+def test_empty_provider_response_does_not_create_new_session_or_messages(tmp_path) -> None:
+    settings = Settings(database_path=tmp_path / "jarvis.sqlite3", intelligence_provider="fake")
+    provider = EmptyProviderResponseProvider()
+
+    with build_client(settings, provider) as client:
+        response = client.post(
+            "/v1/chat",
+            json={"message": "Hello", "correlation_id": "empty-output-correlation"},
+        )
+
+    assert response.status_code == 502
+    assert response.json() == {
+        "status": "error",
+        "error": {
+            "code": "provider_invalid_response",
+            "message": "Intelligence provider returned an invalid response.",
+            "correlation_id": "empty-output-correlation",
+            "provider": "fake",
+            "model": "fake-model",
+        },
+    }
+    assert count_database_sessions(settings.database_path) == 0
+    assert read_database_messages(settings.database_path) == []
+
+
+def test_empty_provider_response_leaves_existing_session_unchanged(tmp_path) -> None:
+    settings = Settings(database_path=tmp_path / "jarvis.sqlite3", intelligence_provider="fake")
+    provider = FakeProvider()
+
+    with build_client(settings, provider) as client:
+        session_id = client.post("/v1/chat", json={"message": "First"}).json()["session_id"]
+        before_failure = read_database_messages(settings.database_path, session_id)
+
+    empty_provider = EmptyProviderResponseProvider()
+    with build_client(settings, empty_provider) as client:
+        response = client.post(
+            "/v1/chat",
+            json={
+                "message": "Second",
+                "session_id": session_id,
+                "correlation_id": "empty-existing-session",
+            },
+        )
+
+    assert response.status_code == 502
+    assert response.json()["error"]["code"] == "provider_invalid_response"
+    assert read_database_messages(settings.database_path, session_id) == before_failure
+
+
 def test_persistence_failure_rolls_back_turn_and_returns_stable_error(tmp_path) -> None:
     settings = Settings(database_path=tmp_path / "jarvis.sqlite3", intelligence_provider="fake")
     provider = FakeProvider()
@@ -492,6 +552,7 @@ async def test_same_session_concurrent_chats_are_serialized_and_ordered(tmp_path
         task_group.start_soon(service.chat, "two", "two-correlation", seed.session_id)
 
     assert provider.max_active_calls == 1
+    assert service._session_locks == {}
     rows = read_database_messages(settings.database_path, seed.session_id)
     assert [row["sequence"] for row in rows] == [1, 2, 3, 4, 5, 6]
     assert [row["role"] for row in rows] == [
@@ -515,3 +576,29 @@ async def test_different_sessions_can_operate_concurrently(tmp_path) -> None:
         task_group.start_soon(service.chat, "two", "two-correlation")
 
     assert provider.max_active_calls == 2
+    assert service._session_locks == {}
+
+
+@pytest.mark.anyio
+async def test_unknown_session_requests_do_not_accumulate_lock_entries(tmp_path) -> None:
+    settings = Settings(database_path=tmp_path / "jarvis.sqlite3", intelligence_provider="fake")
+    provider = SlowTrackingProvider()
+    service = build_service(settings, provider)
+
+    for index in range(5):
+        with pytest.raises(ConversationSessionNotFoundError):
+            await service.chat("hello", f"unknown-{index}", str(uuid4()))
+
+    assert provider.requests == []
+    assert service._session_locks == {}
+
+
+@pytest.mark.anyio
+async def test_completed_new_session_requests_release_lock_entries(tmp_path) -> None:
+    settings = Settings(database_path=tmp_path / "jarvis.sqlite3", intelligence_provider="fake")
+    provider = SlowTrackingProvider()
+    service = build_service(settings, provider)
+
+    await service.chat("hello", "new-session-lock-cleanup")
+
+    assert service._session_locks == {}

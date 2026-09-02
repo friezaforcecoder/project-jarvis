@@ -4,8 +4,10 @@ from __future__ import annotations
 
 import asyncio
 import logging
+from contextlib import asynccontextmanager
 from dataclasses import dataclass
 from time import perf_counter
+from typing import AsyncIterator
 from uuid import uuid4
 
 from jarvis_core.conversations import (
@@ -23,7 +25,7 @@ from jarvis_core.intelligence.contracts import (
     ProviderMessageRole,
     ProviderRequest,
 )
-from jarvis_core.intelligence.errors import ProviderError
+from jarvis_core.intelligence.errors import ProviderError, ProviderErrorCode
 from jarvis_core.intelligence.registry import ProviderRegistry
 
 logger = logging.getLogger(__name__)
@@ -45,6 +47,14 @@ class ChatResult:
     session_id: str
 
 
+@dataclass
+class _SessionLockEntry:
+    """Ref-counted per-session lock entry."""
+
+    lock: asyncio.Lock
+    references: int = 0
+
+
 class ChatService:
     """Route chat messages through the configured intelligence provider."""
 
@@ -57,7 +67,7 @@ class ChatService:
         self._settings = settings
         self._provider_registry = provider_registry
         self._conversation_repository = conversation_repository
-        self._session_locks: dict[str, asyncio.Lock] = {}
+        self._session_locks: dict[str, _SessionLockEntry] = {}
         self._session_locks_guard = asyncio.Lock()
 
     async def chat(
@@ -71,9 +81,8 @@ class ChatService:
         resolved_session_id = session_id or str(uuid4())
         create_session = session_id is None
         provider = self._provider_registry.resolve_default(self._settings.intelligence_provider)
-        session_lock = await self._lock_for_session(resolved_session_id)
 
-        async with session_lock:
+        async with self._session_lock(resolved_session_id):
             return await self._chat_with_session_lock(
                 message=message,
                 correlation_id=correlation_id,
@@ -120,6 +129,13 @@ class ChatService:
 
         try:
             provider_response = await provider.generate(provider_request)
+            if not provider_response.output.strip():
+                raise ProviderError(
+                    ProviderErrorCode.INVALID_RESPONSE,
+                    "Intelligence provider returned an invalid response.",
+                    provider_id=provider.provider_id,
+                    model=provider_response.model,
+                )
         except ProviderError as exc:
             elapsed_ms = round((perf_counter() - started_at) * 1000, 3)
             logger.warning(
@@ -202,10 +218,34 @@ class ChatService:
         messages.append(ProviderMessage(role=ProviderMessageRole.USER, content=current_message))
         return messages
 
-    async def _lock_for_session(self, session_id: str) -> asyncio.Lock:
+    @asynccontextmanager
+    async def _session_lock(self, session_id: str) -> AsyncIterator[None]:
+        entry = await self._reserve_session_lock(session_id)
+        acquired = False
+        try:
+            await entry.lock.acquire()
+            acquired = True
+            yield
+        finally:
+            if acquired:
+                entry.lock.release()
+            await asyncio.shield(self._release_session_lock(session_id, entry))
+
+    async def _reserve_session_lock(self, session_id: str) -> _SessionLockEntry:
         async with self._session_locks_guard:
-            lock = self._session_locks.get(session_id)
-            if lock is None:
-                lock = asyncio.Lock()
-                self._session_locks[session_id] = lock
-            return lock
+            entry = self._session_locks.get(session_id)
+            if entry is None:
+                entry = _SessionLockEntry(lock=asyncio.Lock())
+                self._session_locks[session_id] = entry
+            entry.references += 1
+            return entry
+
+    async def _release_session_lock(
+        self,
+        session_id: str,
+        entry: _SessionLockEntry,
+    ) -> None:
+        async with self._session_locks_guard:
+            entry.references -= 1
+            if entry.references == 0 and self._session_locks.get(session_id) is entry:
+                del self._session_locks[session_id]

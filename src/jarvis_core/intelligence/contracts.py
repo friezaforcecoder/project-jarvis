@@ -5,7 +5,7 @@ from __future__ import annotations
 from enum import StrEnum
 from typing import Any, Protocol
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 
 class ProviderCapability(StrEnum):
@@ -46,9 +46,18 @@ class ProviderResponse(BaseModel):
 
     model_config = ConfigDict(extra="forbid")
 
-    output: str
+    output: str = Field(min_length=1)
     model: str = Field(min_length=1)
     metadata: dict[str, Any] = Field(default_factory=dict)
+
+    @field_validator("output")
+    @classmethod
+    def output_must_contain_text(cls, value: str) -> str:
+        """Require successful provider output to contain assistant text."""
+
+        if not value.strip():
+            raise ValueError("provider output must contain assistant text")
+        return value
 
 
 class IntelligenceProvider(Protocol):

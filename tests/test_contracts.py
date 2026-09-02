@@ -48,6 +48,14 @@ def test_provider_contracts_are_typed_and_vendor_neutral() -> None:
     assert ProviderCapability.TEXT.value == "text"
 
 
+def test_provider_response_requires_usable_output_text() -> None:
+    with pytest.raises(ValidationError):
+        ProviderResponse(output="", model="fake-model")
+
+    with pytest.raises(ValidationError):
+        ProviderResponse(output="   ", model="fake-model")
+
+
 def test_tool_contract_describes_side_effects_for_sentinel() -> None:
     descriptor = ToolDescriptor(
         name="health.read",

@@ -96,7 +96,7 @@ class OllamaProvider:
             raise self._invalid_response()
 
         content = message.get("content")
-        if not isinstance(content, str):
+        if not isinstance(content, str) or not content.strip():
             raise self._invalid_response()
 
         model = data.get("model", self._model)
