@@ -27,6 +27,8 @@ The proposed completed application version for this milestone is `0.3.0`. Do not
 - Add a small conversation persistence/repository boundary
 - Add schema migration/version handling for conversation tables
 - Add configurable bounded context history
+- Add deterministic per-session message ordering
+- Serialize concurrent chat operations for the same session within one JARVIS Core process
 - Preserve the provider-neutral intelligence boundary
 - Keep Ollama conversation-state-free by passing normalized messages from Core
 - Keep normal structured logs free of raw prompt and response contents
@@ -151,14 +153,18 @@ Persist only successful user/assistant exchanges.
 
 For a successful chat request:
 
-1. Ensure the session exists or create it if no session was supplied.
+1. Validate and load the existing session, or reserve a generated session ID in memory if no session was supplied.
 2. Load bounded recent history.
 3. Send normalized provider input.
-4. Persist the current user message.
-5. Persist the assistant response.
+4. Persist the durable session record when needed, the current user message, and the assistant response in one successful transaction.
 6. Return the normalized chat response.
 
-The implementation may persist the user message before provider execution only if provider failure handling avoids leaving a misleading completed exchange. Prefer one transaction for the successful user/assistant pair where practical.
+Atomic successful-turn persistence is required:
+
+- A successful user/assistant exchange must be committed atomically.
+- For a newly generated session, creation of the durable session record plus both messages must occur in the same successful persistence transaction after provider execution.
+- For an existing session, the user and assistant messages must be committed together.
+- If persistence fails, roll back the entire turn rather than leaving a partial exchange.
 
 ## SQLite Schema
 
@@ -175,6 +181,7 @@ conversation_sessions
 conversation_messages
   id TEXT PRIMARY KEY
   session_id TEXT NOT NULL
+  sequence INTEGER NOT NULL
   role TEXT NOT NULL
   content TEXT NOT NULL
   correlation_id TEXT
@@ -185,8 +192,11 @@ conversation_messages
 Reasonable constraints and indexes:
 
 - `role` should be constrained to supported chat roles such as `user` and `assistant`.
-- Message ordering should be deterministic, using `created_at` plus a stable tie breaker such as message ID or an integer sequence.
+- Message ordering must be deterministic, using a monotonically increasing integer sequence or equivalent order value within each session.
+- Do not rely primarily on timestamps plus UUID ordering.
+- Enforce uniqueness for `(session_id, sequence)` or an equivalent deterministic ordering invariant.
 - Index messages by `session_id` and ordering fields used for recent-history retrieval.
+- Recent-history retrieval must return messages in their original conversational order.
 
 Use proper schema migration/version handling consistent with the existing bootstrap persistence.
 
@@ -196,19 +206,30 @@ Required migration behavior:
 - Keep the existing `schema_migrations` table.
 - Add a new migration entry such as `working-memory-v0.3`.
 - Create missing conversation tables idempotently.
+- Introduce only a small, maintainable migration mechanism, not an external migration framework.
+- Record a migration in `schema_migrations` only after that migration has completed successfully.
+- Apply migrations transactionally where SQLite permits.
 - Do not delete, recreate, or wipe the database.
 - Do not assume a fresh database in runtime code.
+- Test creation of a fresh v0.3 database.
+- Test in-place upgrade of a database containing the existing v0.2/bootstrap schema.
 
 ## Provider-Neutral Conversation Input
 
+Intentionally evolve the current single-prompt provider contract into a normalized ordered message representation.
+
 Extend the provider-neutral intelligence contract so providers receive normalized conversation messages from Core.
 
-Suggested normalized message shape:
+Required normalized message shape:
 
 ```text
 role = system | user | assistant
 content = message text
 ```
+
+Use typed provider-neutral roles such as `system`, `user`, and `assistant`.
+
+The normalized ordered message list should be the single source of conversational provider input. Do not keep duplicate representations where the current user message or history exists simultaneously in both a legacy `prompt` field and a message list.
 
 Core should build the provider input in this order:
 
@@ -247,11 +268,26 @@ The limit means the maximum number of prior persisted conversation messages incl
 When conversation history exceeds the configured limit:
 
 - Load only the most recent `JARVIS_CHAT_HISTORY_LIMIT` messages.
+- After selecting the recent window, do not send an orphaned assistant message as the first historical message.
+- If truncation would make the first history item an assistant response whose user message was excluded, drop that leading assistant message.
+- The effective number of included history messages may therefore be smaller than the configured limit.
 - Keep persisted older messages in SQLite.
 - Do not summarize, delete, vectorize, compress, or promote older messages.
 - Preserve deterministic ordering of the included messages.
 
 The setting must reject negative values. The implementation may allow `0` to mean no prior messages are included.
+
+## Same-Session Concurrency
+
+Within the current single JARVIS Core process, concurrent chat operations for the same `session_id` must not race and corrupt conversational ordering.
+
+The simplest acceptable behavior is:
+
+- Serialize chat operations for the same session.
+- Allow different sessions to proceed concurrently.
+- Allocate message sequence values inside the successful persistence transaction or under the same per-session serialization boundary.
+
+Cross-process and multi-worker session coordination is explicitly out of scope for v0.3 and must be documented as a limitation.
 
 ## Failure Behavior
 
@@ -261,7 +297,8 @@ When provider execution fails:
 
 - Return the existing stable provider error response.
 - Preserve the request correlation ID in the error response.
-- Preserve or return the session ID only if the API error shape deliberately supports it.
+- If a new session ID was generated but the provider fails before anything is persisted, do not return that generated ID as though it represents a durable usable session.
+- Existing provider-error response semantics may remain unchanged.
 - Do not persist an assistant message.
 - Avoid leaving a misleading successful exchange in history.
 - Do not log raw user prompts or raw provider responses.
@@ -270,6 +307,7 @@ Recommended persistence behavior:
 
 - For a new generated session, avoid creating a durable session if the provider fails.
 - For an existing session, leave prior history unchanged if the provider fails.
+- If the caller supplied an existing session ID, that session remains unchanged after the failed turn.
 - If the implementation records failed user attempts, it must mark them explicitly as failed and must not include them as normal successful history in future provider requests.
 
 For v0.3, the simplest acceptable behavior is to persist nothing from the failed turn.
@@ -335,14 +373,17 @@ Add focused tests for:
 - `POST /v1/chat` generates and returns `session_id` when omitted.
 - `POST /v1/chat` reuses an existing `session_id`.
 - Successful user/assistant exchanges are persisted.
+- Successful user/assistant exchanges are committed atomically.
 - Session history survives a new repository/app instance using the same SQLite database.
 - Existing `session_id` loads bounded recent history into the provider request.
 - History exceeding `JARVIS_CHAT_HISTORY_LIMIT` sends only the most recent messages.
+- Bounded-history truncation drops a leading orphaned assistant message.
 - `JARVIS_CHAT_HISTORY_LIMIT=0` sends no prior history.
 - Malformed `session_id` is rejected before provider execution.
 - Well-formed unknown `session_id` returns `session_not_found` before provider execution.
 - Provider failure does not persist an assistant message.
 - Provider failure does not add the failed turn to normal future history.
+- Same-session concurrent chat requests do not corrupt message ordering within one process.
 - Correlation ID remains separate from session ID.
 - Provider-neutral message contracts reject unknown fields.
 - Ollama adapter receives normalized messages and does not own session-state logic.
@@ -383,18 +424,26 @@ Documentation should include a small `curl` example for:
 - If no `session_id` is supplied, JARVIS generates one and returns it.
 - If a valid existing `session_id` is supplied, JARVIS loads bounded recent history for that session.
 - Successful user/assistant exchanges are persisted in SQLite.
+- Successful user/assistant exchanges are committed atomically without partial turns.
 - Sessions survive JARVIS Core restarts.
 - Provider input includes JARVIS identity instructions, bounded recent history, and current user message.
 - Provider input remains normalized and provider-neutral.
+- Provider input uses a normalized ordered message list as the single source of conversational input.
 - Ollama receives normalized conversation messages from Core and does not own conversation-state logic.
 - Configurable bounded history prevents unlimited conversations from being sent to providers.
+- Bounded-history truncation never sends a leading orphaned assistant message.
 - Correlation IDs remain separate from session IDs.
 - Malformed session IDs are rejected before provider execution.
 - Well-formed unknown session IDs return a stable `session_not_found` error before provider execution.
 - Provider failures preserve existing normalized provider error behavior.
 - Provider failures do not persist misleading half-completed assistant exchanges.
+- A generated session ID is not returned as a durable usable session when provider execution fails before persistence.
+- Same-session chat operations are serialized within the current JARVIS Core process.
+- Cross-process and multi-worker session coordination is documented as out of scope.
 - Normal structured logs do not include raw prompts or raw assistant responses.
 - SQLite schema migration preserves existing databases and records a v0.3 migration.
+- SQLite migration records are written only after successful migration completion.
+- Fresh v0.3 database creation and in-place v0.2/bootstrap schema upgrade are tested.
 - Tests require no Ollama, external network, secrets, or credentials.
 - Existing local tests pass.
 - CI passes on Windows and Ubuntu.
