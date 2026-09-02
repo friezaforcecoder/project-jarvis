@@ -42,7 +42,7 @@ class Settings(BaseModel):
     intelligence_provider: str = Field(default="ollama", min_length=1)
     ollama_base_url: str = Field(default="http://127.0.0.1:11434", min_length=1)
     ollama_model: str = Field(default="llama3.2", min_length=1)
-    provider_timeout_seconds: float = Field(default=30.0, gt=0)
+    provider_timeout_seconds: float = Field(default=60.0, gt=0)
     system_instruction: str = Field(default=DEFAULT_SYSTEM_INSTRUCTION, min_length=1)
 
     @field_validator("database_path", mode="before")

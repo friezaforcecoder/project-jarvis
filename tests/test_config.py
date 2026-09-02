@@ -21,7 +21,7 @@ def test_default_settings_use_bootstrap_values() -> None:
     assert settings.intelligence_provider == "ollama"
     assert settings.ollama_base_url == "http://127.0.0.1:11434"
     assert settings.ollama_model == "llama3.2"
-    assert settings.provider_timeout_seconds == 30.0
+    assert settings.provider_timeout_seconds == 60.0
     assert settings.system_instruction == DEFAULT_SYSTEM_INSTRUCTION
 
 

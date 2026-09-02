@@ -92,7 +92,7 @@ Configuration is read from environment variables:
 | `JARVIS_INTELLIGENCE_PROVIDER` | `ollama` |
 | `JARVIS_OLLAMA_BASE_URL` | `http://127.0.0.1:11434` |
 | `JARVIS_OLLAMA_MODEL` | `llama3.2` |
-| `JARVIS_PROVIDER_TIMEOUT_SECONDS` | `30` |
+| `JARVIS_PROVIDER_TIMEOUT_SECONDS` | `60` |
 | `JARVIS_SYSTEM_INSTRUCTION` | `You are JARVIS, a local-first personal AI assistant. Be concise, helpful, and honest.` |
 
 ## Verify Health
@@ -106,7 +106,7 @@ curl http://127.0.0.1:8000/v1/health
 Expected semantic result:
 
 ```json
-{"status":"ok","service":"jarvis-core","version":"0.1.0"}
+{"status":"ok","service":"jarvis-core","version":"0.2.0"}
 ```
 
 ## Verify Chat
@@ -142,7 +142,7 @@ Configure a different Ollama URL or model with environment variables:
 ```bash
 export JARVIS_OLLAMA_BASE_URL=http://127.0.0.1:11434
 export JARVIS_OLLAMA_MODEL=llama3.2
-export JARVIS_PROVIDER_TIMEOUT_SECONDS=30
+export JARVIS_PROVIDER_TIMEOUT_SECONDS=60
 ```
 
 On Windows PowerShell:
@@ -150,7 +150,7 @@ On Windows PowerShell:
 ```powershell
 $env:JARVIS_OLLAMA_BASE_URL = "http://127.0.0.1:11434"
 $env:JARVIS_OLLAMA_MODEL = "llama3.2"
-$env:JARVIS_PROVIDER_TIMEOUT_SECONDS = "30"
+$env:JARVIS_PROVIDER_TIMEOUT_SECONDS = "60"
 ```
 
 If Ollama is unavailable during `POST /v1/chat`, JARVIS returns a normalized provider error instead of exposing internal exceptions.
