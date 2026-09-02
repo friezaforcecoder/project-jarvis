@@ -77,6 +77,7 @@ def test_sentinel_contract_returns_action_and_reason() -> None:
         action="health.read",
         resource="/v1/health",
         side_effect_level=SideEffectLevel.READ,
+        execution_boundary=ExecutionBoundary.CORE,
         context={"source": "tests"},
     )
     decision = AuthorizationDecision(

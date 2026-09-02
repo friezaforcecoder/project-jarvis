@@ -13,7 +13,7 @@ from jarvis_core.identity import DEFAULT_SYSTEM_INSTRUCTION
 def test_default_settings_use_bootstrap_values() -> None:
     settings = Settings()
 
-    assert __version__ == "0.3.0"
+    assert __version__ == "0.4.0"
     assert settings.service_name == "jarvis-core"
     assert settings.version == __version__
     assert settings.environment == "local"

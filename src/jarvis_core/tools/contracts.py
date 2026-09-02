@@ -47,6 +47,15 @@ class ToolRequest(BaseModel):
     correlation_id: str | None = Field(default=None, min_length=1)
 
 
+class ToolExecutionContext(BaseModel):
+    """Safe execution context supplied by the coordinator."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    tool_name: str = Field(min_length=1)
+    correlation_id: str = Field(min_length=1)
+
+
 class ToolResult(BaseModel):
     """A normalized tool execution result."""
 
@@ -65,6 +74,15 @@ class Tool(Protocol):
         """Return static tool metadata."""
         ...
 
-    async def execute(self, request: ToolRequest) -> ToolResult:
-        """Execute a tool request after Sentinel authorization."""
+    @property
+    def argument_model(self) -> type[BaseModel]:
+        """Return the typed Pydantic model used to validate tool arguments."""
+        ...
+
+    async def execute(
+        self,
+        arguments: BaseModel,
+        context: ToolExecutionContext,
+    ) -> ToolResult:
+        """Execute with validated arguments after Sentinel authorization."""
         ...
