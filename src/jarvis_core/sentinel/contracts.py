@@ -7,7 +7,7 @@ from typing import Any, Protocol
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from jarvis_core.tools import SideEffectLevel
+from jarvis_core.tools.contracts import ExecutionBoundary, SideEffectLevel
 
 
 class AuthorizationAction(StrEnum):
@@ -27,6 +27,7 @@ class AuthorizationRequest(BaseModel):
     action: str = Field(min_length=1)
     resource: str = Field(min_length=1)
     side_effect_level: SideEffectLevel
+    execution_boundary: ExecutionBoundary
     context: dict[str, Any] = Field(default_factory=dict)
     correlation_id: str | None = Field(default=None, min_length=1)
 

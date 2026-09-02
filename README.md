@@ -4,13 +4,14 @@ Project J.A.R.V.I.S. is a local-first personal AI operating layer. The goal is n
 
 ## Current Status
 
-This repository contains the early JARVIS Core foundation. It starts a small local FastAPI service, initializes SQLite runtime storage, exposes health and text chat endpoints, defines typed contracts, routes text intelligence through provider-neutral interfaces, and persists simple bounded conversation sessions.
+This repository contains the early JARVIS Core foundation. It starts a small local FastAPI service, initializes SQLite runtime storage, exposes health, text chat, and direct deterministic tool execution endpoints, defines typed contracts, routes text intelligence through provider-neutral interfaces, persists simple bounded conversation sessions, and sends direct tool executions through Sentinel authorization.
 
 The current proposed and implemented milestones are documented in:
 
 - `docs/tasks/BOOTSTRAP_V0.1.md`
 - `docs/tasks/INTELLIGENCE_V0.2.md`
 - `docs/tasks/WORKING_MEMORY_V0.3.md`
+- `docs/tasks/TOOL_SENTINEL_V0.4.md`
 
 ## Source Of Truth
 
@@ -38,7 +39,7 @@ Early milestones should stay intentionally small. The expected local requirement
 - Git
 - Python 3.12+
 
-Ollama is optional for manual chat verification. The automated tests do not require Ollama, network access, or external credentials.
+Ollama is optional for manual chat verification. The automated tests do not require Ollama, network access, browser automation, operating-system automation, or external credentials.
 
 Do not add a large stack during early milestones. Node, Tauri, Whisper, TTS, Home Assistant, browser automation, MCP, and richer UI work belong to later milestones unless a future task explicitly changes that scope.
 
@@ -69,7 +70,7 @@ Run the complete test suite:
 python -m pytest
 ```
 
-The tests use fake and mocked providers for intelligence behavior. They do not require Ollama to be installed or running.
+The tests use fake and mocked providers for intelligence behavior and deterministic in-process tools for Tool Fabric behavior. They do not require Ollama to be installed or running.
 
 ## Run
 
@@ -108,7 +109,7 @@ curl http://127.0.0.1:8000/v1/health
 Expected semantic result:
 
 ```json
-{"status":"ok","service":"jarvis-core","version":"0.3.0"}
+{"status":"ok","service":"jarvis-core","version":"0.4.0"}
 ```
 
 ## Verify Chat
@@ -155,6 +156,54 @@ Unknown well-formed sessions return a stable 404 response before provider execut
 
 Malformed session IDs are rejected with request validation before provider execution. Provider failures persist nothing from the failed turn; a newly generated session does not become durable if the provider fails.
 
+## Verify Tool Execution
+
+JARVIS v0.4 adds a direct deterministic Tool Fabric endpoint. Chat does not call tools yet, and models do not select tools yet.
+
+Call the harmless built-in runtime-info tool:
+
+```bash
+curl -X POST http://127.0.0.1:8000/v1/tools/execute \
+  -H "Content-Type: application/json" \
+  -d '{"tool_name":"system.runtime_info","arguments":{}}'
+```
+
+Expected semantic result:
+
+```json
+{
+  "status": "success",
+  "tool_name": "system.runtime_info",
+  "correlation_id": "generated-correlation-id",
+  "sentinel": {
+    "decision": "allow",
+    "reason": "Safe no-write tool execution is allowed."
+  },
+  "result": {
+    "success": true,
+    "data": {
+      "platform_family": "Windows",
+      "python_version": "3.12.x",
+      "jarvis_version": "0.4.0"
+    },
+    "error": null
+  }
+}
+```
+
+The exact platform and Python values depend on the machine running JARVIS. The tool returns only broad safe runtime metadata: platform family, Python version, and JARVIS version. It does not return username, hostname, IP addresses, environment variables, process lists, file contents, serial numbers, secrets, or local filesystem paths.
+
+Default Sentinel policy for direct tools:
+
+| Side-effect level | Decision |
+| --- | --- |
+| `none` | `allow` |
+| `read` | `allow` |
+| `write` | `ask` |
+| `dangerous` | `deny` |
+
+In v0.4, `ask` means the API returns `409 tool_approval_required`; no approval UI or approval persistence exists yet. `dangerous` tools return `403 tool_denied`. Tools execute only when Sentinel returns `allow`.
+
 ## Ollama
 
 JARVIS Core starts without calling Ollama. Ollama is contacted only when `POST /v1/chat` routes to the `ollama` provider.
@@ -196,7 +245,8 @@ The following are deliberately out of scope for the current early milestones:
 - Vector search
 - Windows automation
 - Browser automation
-- Tool calling
+- LLM/model tool calling
+- Automatic tool selection from chat
 - Streaming responses
 - React UI
 - Tauri
