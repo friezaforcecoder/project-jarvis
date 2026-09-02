@@ -523,11 +523,11 @@ The preferred workflow for early JARVIS development:
 5. Run tests and manual verification before merge.
 6. Merge only after the task is narrow, verified, and understandable.
 
-For the first milestone:
+Current implementation workflow:
 
-- Claude may be used as the primary implementation engineer.
-- Codex may be used as the independent reviewer/fixer.
-- Neither should implement later milestones during Bootstrap v0.1.
+- ChatGPT/Codex is the current implementation workflow for this repository.
+- `AGENTS.md` remains the canonical coding-agent instruction file.
+- Legacy compatibility files may point agents back to `AGENTS.md`, but must not become a second source of truth.
 
 ## Scope Discipline
 

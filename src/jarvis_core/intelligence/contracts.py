@@ -20,6 +20,7 @@ class ProviderRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     prompt: str = Field(min_length=1)
+    system_instruction: str = Field(min_length=1)
     context: dict[str, Any] = Field(default_factory=dict)
     correlation_id: str | None = Field(default=None, min_length=1)
 
@@ -30,6 +31,7 @@ class ProviderResponse(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     output: str
+    model: str = Field(min_length=1)
     metadata: dict[str, Any] = Field(default_factory=dict)
 
 

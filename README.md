@@ -4,20 +4,21 @@ Project J.A.R.V.I.S. is a local-first personal AI operating layer. The goal is n
 
 ## Current Status
 
-This repository contains the Bootstrap v0.1 foundation for JARVIS Core. It starts a small local FastAPI service, initializes SQLite runtime storage, exposes a health endpoint, and defines the first typed contracts for events, intelligence providers, tools, and Sentinel authorization.
+This repository contains the early JARVIS Core foundation. It starts a small local FastAPI service, initializes SQLite runtime storage, exposes health and text chat endpoints, defines typed contracts, and routes text intelligence through provider-neutral interfaces.
 
-The first implementation milestone is documented in:
+The current proposed and implemented milestones are documented in:
 
-`docs/tasks/BOOTSTRAP_V0.1.md`
+- `docs/tasks/BOOTSTRAP_V0.1.md`
+- `docs/tasks/INTELLIGENCE_V0.2.md`
 
 ## Source Of Truth
 
 Read these before making project changes:
 
 - `docs/MASTER_ARCHITECTURE.md` - architecture, boundaries, security model, and long-term direction.
-- `docs/tasks/BOOTSTRAP_V0.1.md` - the first narrow implementation ticket.
-- `AGENTS.md` - Codex-facing repo instructions.
-- `CLAUDE.md` - Claude-facing repo instructions.
+- `docs/tasks/*.md` - active milestone task documents.
+- `AGENTS.md` - canonical coding-agent instructions.
+- `CLAUDE.md` - legacy compatibility pointer back to `AGENTS.md`.
 
 ## Early Workflow
 
@@ -27,20 +28,18 @@ Read these before making project changes:
 - Open a pull request back to `main` when a task is ready for review.
 - Do not commit secrets, local `.env` files, local databases, caches, model files, or generated runtime artifacts.
 
-The intended first build flow is:
+ChatGPT/Codex is the current implementation workflow for this repository. A human reviews changes before merge.
 
-1. Claude performs the initial Bootstrap v0.1 implementation on a branch such as `claude/bootstrap-v0.1`.
-2. Codex independently reviews and fixes only concrete issues.
-3. A human reviews the result before merge.
+## Local Requirements
 
-## First Local Requirements
-
-Bootstrap v0.1 should stay intentionally small. The expected local requirements are:
+Early milestones should stay intentionally small. The expected local requirements are:
 
 - Git
 - Python 3.12+
 
-Do not add a large stack during the bootstrap milestone. Node, Tauri, Whisper, TTS, Home Assistant, browser automation, MCP, and richer UI work belong to later milestones unless a future task explicitly changes that scope.
+Ollama is optional for manual v0.2 chat verification. The automated tests do not require Ollama, network access, or external credentials.
+
+Do not add a large stack during early milestones. Node, Tauri, Whisper, TTS, Home Assistant, browser automation, MCP, and richer UI work belong to later milestones unless a future task explicitly changes that scope.
 
 ## Install
 
@@ -69,6 +68,8 @@ Run the complete test suite:
 python -m pytest
 ```
 
+The tests use fake and mocked providers for intelligence behavior. They do not require Ollama to be installed or running.
+
 ## Run
 
 Start JARVIS Core:
@@ -88,6 +89,11 @@ Configuration is read from environment variables:
 | `JARVIS_LOG_LEVEL` | `INFO` |
 | `JARVIS_HOST` | `127.0.0.1` |
 | `JARVIS_PORT` | `8000` |
+| `JARVIS_INTELLIGENCE_PROVIDER` | `ollama` |
+| `JARVIS_OLLAMA_BASE_URL` | `http://127.0.0.1:11434` |
+| `JARVIS_OLLAMA_MODEL` | `llama3.2` |
+| `JARVIS_PROVIDER_TIMEOUT_SECONDS` | `60` |
+| `JARVIS_SYSTEM_INSTRUCTION` | `You are JARVIS, a local-first personal AI assistant. Be concise, helpful, and honest.` |
 
 ## Verify Health
 
@@ -100,12 +106,58 @@ curl http://127.0.0.1:8000/v1/health
 Expected semantic result:
 
 ```json
-{"status":"ok","service":"jarvis-core","version":"0.1.0"}
+{"status":"ok","service":"jarvis-core","version":"0.2.0"}
 ```
+
+## Verify Chat
+
+With the service running, verify the text chat endpoint:
+
+```bash
+curl -X POST http://127.0.0.1:8000/v1/chat \
+  -H "Content-Type: application/json" \
+  -d '{"message":"Say hello in one short sentence.","correlation_id":"manual-chat-1"}'
+```
+
+Expected semantic result:
+
+```json
+{"message":"Hello, I am JARVIS.","provider":"ollama","model":"llama3.2","correlation_id":"manual-chat-1"}
+```
+
+The exact message text comes from the configured model. If `correlation_id` is omitted, JARVIS generates one and returns it.
+
+## Ollama
+
+JARVIS Core starts without calling Ollama. Ollama is contacted only when `POST /v1/chat` routes to the `ollama` provider.
+
+Install and start Ollama outside this repository, then pull a local model:
+
+```bash
+ollama pull llama3.2
+```
+
+Configure a different Ollama URL or model with environment variables:
+
+```bash
+export JARVIS_OLLAMA_BASE_URL=http://127.0.0.1:11434
+export JARVIS_OLLAMA_MODEL=llama3.2
+export JARVIS_PROVIDER_TIMEOUT_SECONDS=60
+```
+
+On Windows PowerShell:
+
+```powershell
+$env:JARVIS_OLLAMA_BASE_URL = "http://127.0.0.1:11434"
+$env:JARVIS_OLLAMA_MODEL = "llama3.2"
+$env:JARVIS_PROVIDER_TIMEOUT_SECONDS = "60"
+```
+
+If Ollama is unavailable during `POST /v1/chat`, JARVIS returns a normalized provider error instead of exposing internal exceptions.
 
 ## Not Built Yet
 
-The following are deliberately out of scope for the initial repository setup and Bootstrap v0.1:
+The following are deliberately out of scope for the current early milestones:
 
 - Voice interaction
 - Speech recognition
@@ -114,6 +166,8 @@ The following are deliberately out of scope for the initial repository setup and
 - Vector search
 - Windows automation
 - Browser automation
+- Tool calling
+- Streaming responses
 - React UI
 - Tauri
 - Home Assistant
