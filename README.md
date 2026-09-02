@@ -4,12 +4,13 @@ Project J.A.R.V.I.S. is a local-first personal AI operating layer. The goal is n
 
 ## Current Status
 
-This repository contains the early JARVIS Core foundation. It starts a small local FastAPI service, initializes SQLite runtime storage, exposes health and text chat endpoints, defines typed contracts, and routes text intelligence through provider-neutral interfaces.
+This repository contains the early JARVIS Core foundation. It starts a small local FastAPI service, initializes SQLite runtime storage, exposes health and text chat endpoints, defines typed contracts, routes text intelligence through provider-neutral interfaces, and persists simple bounded conversation sessions.
 
 The current proposed and implemented milestones are documented in:
 
 - `docs/tasks/BOOTSTRAP_V0.1.md`
 - `docs/tasks/INTELLIGENCE_V0.2.md`
+- `docs/tasks/WORKING_MEMORY_V0.3.md`
 
 ## Source Of Truth
 
@@ -37,7 +38,7 @@ Early milestones should stay intentionally small. The expected local requirement
 - Git
 - Python 3.12+
 
-Ollama is optional for manual v0.2 chat verification. The automated tests do not require Ollama, network access, or external credentials.
+Ollama is optional for manual chat verification. The automated tests do not require Ollama, network access, or external credentials.
 
 Do not add a large stack during early milestones. Node, Tauri, Whisper, TTS, Home Assistant, browser automation, MCP, and richer UI work belong to later milestones unless a future task explicitly changes that scope.
 
@@ -93,6 +94,7 @@ Configuration is read from environment variables:
 | `JARVIS_OLLAMA_BASE_URL` | `http://127.0.0.1:11434` |
 | `JARVIS_OLLAMA_MODEL` | `llama3.2` |
 | `JARVIS_PROVIDER_TIMEOUT_SECONDS` | `60` |
+| `JARVIS_CHAT_HISTORY_LIMIT` | `10` |
 | `JARVIS_SYSTEM_INSTRUCTION` | `You are JARVIS, a local-first personal AI assistant. Be concise, helpful, and honest.` |
 
 ## Verify Health
@@ -106,7 +108,7 @@ curl http://127.0.0.1:8000/v1/health
 Expected semantic result:
 
 ```json
-{"status":"ok","service":"jarvis-core","version":"0.2.0"}
+{"status":"ok","service":"jarvis-core","version":"0.3.0"}
 ```
 
 ## Verify Chat
@@ -122,10 +124,36 @@ curl -X POST http://127.0.0.1:8000/v1/chat \
 Expected semantic result:
 
 ```json
-{"message":"Hello, I am JARVIS.","provider":"ollama","model":"llama3.2","correlation_id":"manual-chat-1"}
+{"message":"Hello, I am JARVIS.","provider":"ollama","model":"llama3.2","correlation_id":"manual-chat-1","session_id":"generated-session-uuid"}
 ```
 
-The exact message text comes from the configured model. If `correlation_id` is omitted, JARVIS generates one and returns it.
+The exact message text comes from the configured model. If `correlation_id` is omitted, JARVIS generates one and returns it. If `session_id` is omitted, JARVIS generates a new UUID session, persists the successful exchange, and returns that session ID.
+
+## Working Memory Sessions
+
+`correlation_id` identifies one request for tracing. `session_id` identifies a durable SQLite conversation session.
+
+Continue an existing session by sending the returned `session_id`:
+
+```bash
+curl -X POST http://127.0.0.1:8000/v1/chat \
+  -H "Content-Type: application/json" \
+  -d '{"message":"What did I ask you to do?","session_id":"returned-session-uuid","correlation_id":"manual-chat-2"}'
+```
+
+JARVIS loads up to `JARVIS_CHAT_HISTORY_LIMIT` prior persisted messages, drops a leading orphaned assistant message after truncation, adds the configured system instruction, and sends the resulting ordered provider-neutral messages to the configured provider.
+
+Sessions survive restarts when JARVIS Core is started with the same `JARVIS_DATABASE_PATH`.
+
+Same-session chat requests are serialized within a single JARVIS Core process. Cross-process or multi-worker session coordination is out of scope for v0.3.
+
+Unknown well-formed sessions return a stable 404 response before provider execution:
+
+```json
+{"status":"error","error":{"code":"session_not_found","message":"Conversation session was not found.","correlation_id":"manual-chat-missing","session_id":"11111111-1111-4111-8111-111111111111"}}
+```
+
+Malformed session IDs are rejected with request validation before provider execution. Provider failures persist nothing from the failed turn; a newly generated session does not become durable if the provider fails.
 
 ## Ollama
 
@@ -143,6 +171,7 @@ Configure a different Ollama URL or model with environment variables:
 export JARVIS_OLLAMA_BASE_URL=http://127.0.0.1:11434
 export JARVIS_OLLAMA_MODEL=llama3.2
 export JARVIS_PROVIDER_TIMEOUT_SECONDS=60
+export JARVIS_CHAT_HISTORY_LIMIT=10
 ```
 
 On Windows PowerShell:
@@ -151,6 +180,7 @@ On Windows PowerShell:
 $env:JARVIS_OLLAMA_BASE_URL = "http://127.0.0.1:11434"
 $env:JARVIS_OLLAMA_MODEL = "llama3.2"
 $env:JARVIS_PROVIDER_TIMEOUT_SECONDS = "60"
+$env:JARVIS_CHAT_HISTORY_LIMIT = "10"
 ```
 
 If Ollama is unavailable during `POST /v1/chat`, JARVIS returns a normalized provider error instead of exposing internal exceptions.
@@ -162,7 +192,7 @@ The following are deliberately out of scope for the current early milestones:
 - Voice interaction
 - Speech recognition
 - Text-to-speech
-- Memory intelligence
+- Semantic long-term memory
 - Vector search
 - Windows automation
 - Browser automation

@@ -6,7 +6,13 @@ import pytest
 from pydantic import ValidationError
 
 from jarvis_core.events import JarvisEvent
-from jarvis_core.intelligence import ProviderCapability, ProviderRequest, ProviderResponse
+from jarvis_core.intelligence import (
+    ProviderCapability,
+    ProviderMessage,
+    ProviderMessageRole,
+    ProviderRequest,
+    ProviderResponse,
+)
 from jarvis_core.sentinel import AuthorizationAction, AuthorizationDecision, AuthorizationRequest
 from jarvis_core.tools import ExecutionBoundary, SideEffectLevel, ToolDescriptor, ToolRequest, ToolResult
 
@@ -26,14 +32,17 @@ def test_event_contract_requires_timezone_aware_timestamp() -> None:
 
 def test_provider_contracts_are_typed_and_vendor_neutral() -> None:
     request = ProviderRequest(
-        prompt="Summarize status",
-        system_instruction="You are JARVIS.",
+        messages=[
+            ProviderMessage(role=ProviderMessageRole.SYSTEM, content="You are JARVIS."),
+            ProviderMessage(role=ProviderMessageRole.USER, content="Summarize status"),
+        ],
         context={"service": "jarvis-core"},
     )
     response = ProviderResponse(output="ok", model="fake-model")
 
-    assert request.prompt == "Summarize status"
-    assert request.system_instruction == "You are JARVIS."
+    assert request.messages[0].role is ProviderMessageRole.SYSTEM
+    assert request.messages[1].content == "Summarize status"
+    assert not hasattr(request, "prompt")
     assert response.metadata == {}
     assert response.model == "fake-model"
     assert ProviderCapability.TEXT.value == "text"
@@ -77,4 +86,10 @@ def test_architectural_contracts_reject_unknown_fields() -> None:
         JarvisEvent(event_type="core.started", source="tests", surprise=True)  # type: ignore[call-arg]
 
     with pytest.raises(ValidationError):
-        ProviderRequest(prompt="hello", system_instruction="identity", provider="specific")  # type: ignore[call-arg]
+        ProviderRequest(
+            messages=[ProviderMessage(role=ProviderMessageRole.USER, content="hello")],
+            provider="specific",
+        )  # type: ignore[call-arg]
+
+    with pytest.raises(ValidationError):
+        ProviderMessage(role=ProviderMessageRole.USER, content="hello", surprise=True)  # type: ignore[call-arg]

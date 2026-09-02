@@ -1,6 +1,6 @@
 # Project J.A.R.V.I.S. Working Memory v0.3
 
-Status: proposed
+Status: approved
 
 ## Goal
 
@@ -12,7 +12,7 @@ Can JARVIS preserve recent chat turns for a named session across process restart
 
 This is working-memory/session persistence only. It is not semantic memory, long-term knowledge, user preference storage, retrieval, summarization, or autonomous behavior.
 
-The proposed completed application version for this milestone is `0.3.0`. Do not change the application version until this milestone is implemented.
+The completed application version for this milestone is `0.3.0`.
 
 ## Implement
 

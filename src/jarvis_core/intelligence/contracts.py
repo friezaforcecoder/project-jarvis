@@ -14,13 +14,29 @@ class ProviderCapability(StrEnum):
     TEXT = "text"
 
 
+class ProviderMessageRole(StrEnum):
+    """Provider-neutral roles for ordered model input."""
+
+    SYSTEM = "system"
+    USER = "user"
+    ASSISTANT = "assistant"
+
+
+class ProviderMessage(BaseModel):
+    """One provider-neutral message in an ordered model request."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    role: ProviderMessageRole
+    content: str = Field(min_length=1)
+
+
 class ProviderRequest(BaseModel):
     """Input contract for a provider call."""
 
     model_config = ConfigDict(extra="forbid")
 
-    prompt: str = Field(min_length=1)
-    system_instruction: str = Field(min_length=1)
+    messages: list[ProviderMessage] = Field(min_length=1)
     context: dict[str, Any] = Field(default_factory=dict)
     correlation_id: str | None = Field(default=None, min_length=1)
 

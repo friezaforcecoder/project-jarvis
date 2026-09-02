@@ -12,7 +12,7 @@ from jarvis_core.config import Settings, load_settings
 from jarvis_core.intelligence import ChatService, ProviderRegistry
 from jarvis_core.intelligence.providers import OllamaProvider
 from jarvis_core.logging import configure_logging
-from jarvis_core.persistence import initialize_sqlite
+from jarvis_core.persistence import SQLiteConversationRepository, initialize_sqlite
 
 from .routes.chat import router as chat_router
 from .routes.health import router as health_router
@@ -70,7 +70,14 @@ def create_app(
     )
     fastapi_app.state.settings = resolved_settings
     fastapi_app.state.provider_registry = resolved_registry
-    fastapi_app.state.chat_service = ChatService(resolved_settings, resolved_registry)
+    fastapi_app.state.conversation_repository = SQLiteConversationRepository(
+        resolved_settings.database_path
+    )
+    fastapi_app.state.chat_service = ChatService(
+        resolved_settings,
+        resolved_registry,
+        fastapi_app.state.conversation_repository,
+    )
     fastapi_app.include_router(chat_router, prefix="/v1")
     fastapi_app.include_router(health_router, prefix="/v1")
     return fastapi_app

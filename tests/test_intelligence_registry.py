@@ -6,6 +6,8 @@ from jarvis_core.intelligence import (
     ProviderCapability,
     ProviderError,
     ProviderErrorCode,
+    ProviderMessage,
+    ProviderMessageRole,
     ProviderRegistry,
     ProviderRequest,
     ProviderResponse,
@@ -17,7 +19,7 @@ class FakeProvider:
     capabilities = frozenset({ProviderCapability.TEXT})
 
     async def generate(self, request: ProviderRequest) -> ProviderResponse:
-        return ProviderResponse(output=request.prompt, model="fake-model")
+        return ProviderResponse(output=request.messages[-1].content, model="fake-model")
 
 
 def test_registry_registers_and_resolves_default_provider() -> None:
