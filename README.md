@@ -4,7 +4,7 @@ Project J.A.R.V.I.S. is a local-first personal AI operating layer. The goal is n
 
 ## Current Status
 
-This repository contains the early JARVIS Core foundation. It starts a small local FastAPI service, initializes SQLite runtime storage, exposes health, text chat, and direct deterministic tool execution endpoints, defines typed contracts, routes text intelligence through provider-neutral interfaces, persists simple bounded conversation sessions, and sends direct tool executions through Sentinel authorization.
+This repository contains the early JARVIS Core foundation. It starts a small local FastAPI service, initializes SQLite runtime storage, exposes health, text chat, and direct deterministic tool execution endpoints, defines typed contracts, routes text intelligence through provider-neutral interfaces, persists simple bounded conversation sessions, sends direct tool executions through Sentinel authorization, and exposes one safe local system-status tool.
 
 The current proposed and implemented milestones are documented in:
 
@@ -12,6 +12,7 @@ The current proposed and implemented milestones are documented in:
 - `docs/tasks/INTELLIGENCE_V0.2.md`
 - `docs/tasks/WORKING_MEMORY_V0.3.md`
 - `docs/tasks/TOOL_SENTINEL_V0.4.md`
+- `docs/tasks/LOCAL_SYSTEM_CONTEXT_V0.5.md`
 
 ## Source Of Truth
 
@@ -38,6 +39,8 @@ Early milestones should stay intentionally small. The expected local requirement
 
 - Git
 - Python 3.12+
+
+`psutil` is installed with the Python package and is used only for the v0.5 `system.status` local health snapshot.
 
 Ollama is optional for manual chat verification. The automated tests do not require Ollama, network access, browser automation, operating-system automation, or external credentials.
 
@@ -109,7 +112,7 @@ curl http://127.0.0.1:8000/v1/health
 Expected semantic result:
 
 ```json
-{"status":"ok","service":"jarvis-core","version":"0.4.0"}
+{"status":"ok","service":"jarvis-core","version":"0.5.0"}
 ```
 
 ## Verify Chat
@@ -184,7 +187,7 @@ Expected semantic result:
     "data": {
       "platform_family": "Windows",
       "python_version": "3.12.x",
-      "jarvis_version": "0.4.0"
+      "jarvis_version": "0.5.0"
     },
     "error": null
   }
@@ -192,6 +195,63 @@ Expected semantic result:
 ```
 
 The exact platform and Python values depend on the machine running JARVIS. The tool returns only broad safe runtime metadata: platform family, Python version, and JARVIS version. It does not return username, hostname, IP addresses, environment variables, process lists, file contents, serial numbers, secrets, or local filesystem paths.
+
+## Verify Local System Status
+
+JARVIS v0.5 adds `system.status`, one safe read-only local system context tool. It uses the existing `POST /v1/tools/execute` endpoint, is registered as `SideEffectLevel.READ` + `ExecutionBoundary.CORE`, and is authorized by the default Sentinel `read -> allow` policy.
+
+Call the built-in system-status tool:
+
+```bash
+curl -X POST http://127.0.0.1:8000/v1/tools/execute \
+  -H "Content-Type: application/json" \
+  -d '{"tool_name":"system.status","arguments":{}}'
+```
+
+Representative result:
+
+```json
+{
+  "status": "success",
+  "tool_name": "system.status",
+  "correlation_id": "generated-correlation-id",
+  "sentinel": {
+    "decision": "allow",
+    "reason": "Safe no-write tool execution is allowed."
+  },
+  "result": {
+    "success": true,
+    "data": {
+      "cpu": {
+        "usage_percent": 12.5,
+        "logical_core_count": 16,
+        "physical_core_count": 8
+      },
+      "memory": {
+        "total_bytes": 34359738368,
+        "available_bytes": 20000000000,
+        "used_bytes": 14359738368,
+        "usage_percent": 41.8
+      },
+      "power": {
+        "battery_present": false,
+        "battery_percent": null,
+        "plugged_in": null
+      },
+      "system": {
+        "uptime_seconds": 123456.0
+      }
+    },
+    "error": null
+  }
+}
+```
+
+`system.status` uses `psutil` for CPU usage, CPU counts, memory, battery state, and boot time. This keeps the implementation cross-platform for Windows and Linux CI without shell, PowerShell, WMI, subprocess calls, or hand-written operating-system collectors.
+
+The tool deliberately excludes username, hostname, IP and MAC addresses, network interfaces, environment variables, processes, command lines, files, paths, drives, mounts, serial numbers, device IDs, account data, secrets, clipboard contents, screenshots, window titles, installed applications, and arbitrary file contents. It does not perform disk/storage enumeration.
+
+This is not the full Context Engine. There is no background monitoring, polling, cache, telemetry history, proactive alerting, or chat/LLM tool calling in v0.5.
 
 Default Sentinel policy for direct tools:
 

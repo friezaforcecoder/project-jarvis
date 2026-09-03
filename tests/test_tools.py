@@ -205,7 +205,7 @@ async def test_runtime_info_tool_executes_and_returns_safe_metadata() -> None:
     assert outcome.result.success is True
     assert outcome.result.data["platform_family"] == (platform.system() or "Unknown")
     assert outcome.result.data["python_version"] == platform.python_version()
-    assert outcome.result.data["jarvis_version"] == "0.4.0"
+    assert outcome.result.data["jarvis_version"] == "0.5.0"
     assert set(outcome.result.data) == {
         "platform_family",
         "python_version",
