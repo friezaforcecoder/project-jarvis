@@ -238,8 +238,30 @@ The router should use a small normalized phrase/keyword approach:
 2. Remove or normalize punctuation and contractions.
 3. Tokenize to simple words.
 4. Match against a short explicit table of known safe intent patterns.
-5. Require local-machine context terms where needed, such as `my computer`, `this computer`, `my pc`, `jarvis`, `cpu`, `ram`, `memory`, `uptime`, or `battery`.
-6. Reject common knowledge/explanation patterns before matching local status, such as `what is`, `explain`, `define`, `essay`, `how does`, and `how do`.
+5. Distinguish local/current state requests from general knowledge or definition requests.
+6. Require local, possessive, or current-state cues where needed, such as `my`, `this computer`, `this pc`, `jarvis`, `usage`, `status`, `uptime`, `running`, `using`, or `have a battery`, combined with the supported metric/runtime concepts.
+7. Reject general knowledge and explanation patterns when they are not paired with local/current state cues, such as `explain`, `define`, `essay`, `how does`, and `how do`.
+
+Do not blanket-reject messages merely because they begin with:
+
+```text
+what is
+what's
+```
+
+Those forms are used by valid local measurement and runtime requests, including:
+
+- `What is my CPU usage?`
+- `What's my memory usage?`
+- `What is my computer uptime?`
+- `What version of JARVIS am I running?`
+
+The routing distinction is:
+
+```text
+LOCAL/CURRENT STATE REQUESTS -> may route
+GENERAL KNOWLEDGE / DEFINITION REQUESTS -> must not route
+```
 
 Do not add:
 
@@ -292,9 +314,12 @@ jarvis_runtime_info
 Messages that should not route to `system.status`:
 
 - `What is RAM?`
+- `What is a CPU?`
+- `What is uptime?`
 - `Explain how a CPU works.`
-- `Write an essay about computer memory.`
 - `What is battery chemistry?`
+- `Explain computer memory.`
+- `Write an essay about computer memory.`
 - `Explain system uptime.`
 - `How does virtual memory work?`
 
@@ -315,20 +340,50 @@ SideEffectLevel.READ
 ExecutionBoundary.CORE
 ```
 
-Even though Sentinel remains authoritative, the chat bridge must enforce this narrow allowlist before calling the coordinator.
+The chat bridge is a stricter boundary than Sentinel for v0.6.
 
-If a routed tool's trusted descriptor does not match `READ` + `CORE`, the chat bridge must fail safely and must not silently broaden authority.
+Before calling `ToolExecutionCoordinator`, the chat bridge must resolve the trusted registered descriptor and require both:
+
+```text
+SideEffectLevel.READ
+ExecutionBoundary.CORE
+```
+
+Do not rely on the current Sentinel `WRITE -> ASK` or `DANGEROUS -> DENY` policy to enforce the v0.6 chat allowlist.
+
+This prevents a future or custom Sentinel policy from accidentally allowing `WRITE` or `DANGEROUS` chat execution in v0.6.
+
+If either trusted descriptor value does not match, the chat bridge must:
+
+- Not call `ToolExecutionCoordinator`
+- Not execute the tool
+- Not call `Tool.execute`
+- Not give the provider fake tool context
+- Persist no chat turn
+- Fail closed using a safe normalized chat-tool error
+
+Use the existing stable chat-tool error shape. A reasonable mapping is `tool_denied` with HTTP 403 and a safe message such as `Tool is not allowed from chat.`
 
 The allowlist check must use trusted registered descriptors from `ToolRegistry` or coordinator-owned registry behavior. It must not use caller-provided metadata.
 
 Tests should inject altered descriptors to prove:
 
-- `WRITE` tools are stopped by Sentinel `ASK` and are not treated as successful safe chat tools.
-- `DANGEROUS` tools are stopped by Sentinel `DENY` and are not treated as successful safe chat tools.
-- Non-`CORE` tools are not treated as safe chat tools.
-- Sentinel decisions are still honored.
+- `WRITE` is rejected by the chat `READ` + `CORE` boundary before coordinator execution.
+- `DANGEROUS` is rejected by the chat `READ` + `CORE` boundary before coordinator execution.
+- Non-`CORE` is rejected by the chat `READ` + `CORE` boundary before coordinator execution.
+- Provider context is not fabricated after boundary rejection.
+- No chat turn is persisted after boundary rejection.
 
 All execution must still go through:
+
+```text
+chat allowlist boundary
+-> ToolExecutionCoordinator
+-> Sentinel
+-> Tool
+```
+
+For descriptors that pass the chat allowlist boundary, execution must still go through:
 
 ```text
 ToolExecutionCoordinator
@@ -593,6 +648,7 @@ Recommended implementation shape:
 Required status mapping for chat-routed tool errors:
 
 ```text
+chat READ+CORE allowlist boundary failure -> HTTP 403, code tool_denied
 tool_approval_required -> HTTP 409
 tool_denied -> HTTP 403
 tool_execution_failed -> HTTP 500
@@ -635,18 +691,32 @@ READ -> ALLOW
 
 The chat bridge must not bypass other decisions.
 
+The defense order is:
+
+```text
+chat READ+CORE allowlist boundary
+-> ToolExecutionCoordinator
+-> Sentinel
+-> Tool
+```
+
+Do not test `WRITE` or `DANGEROUS` descriptor injection by expecting those descriptors to reach Sentinel. Those cases must fail at the stricter chat `READ` + `CORE` boundary before coordinator execution.
+
+Separately prove Sentinel is still authoritative by injecting or customizing Sentinel behavior for an otherwise valid routed tool whose trusted descriptor is `READ` + `CORE`.
+
 Tests must prove:
 
-- If a trusted routed descriptor is changed or injected as `WRITE`, Sentinel `ASK` prevents execution.
-- If a trusted routed descriptor is changed or injected as `DANGEROUS`, Sentinel `DENY` prevents execution.
-- The provider is not called with fabricated tool data after `ASK`.
-- The provider is not called with fabricated tool data after `DENY`.
+- For an otherwise valid `READ` + `CORE` routed tool, Sentinel `ASK` prevents execution.
+- For an otherwise valid `READ` + `CORE` routed tool, Sentinel `DENY` prevents execution.
+- For an otherwise valid `READ` + `CORE` routed tool, Sentinel authorization failure becomes a safe normalized failure.
+- `tool_approval_required` returns stable HTTP 409 behavior.
+- `tool_denied` returns stable HTTP 403 behavior.
+- The provider is not called with fabricated tool data after Sentinel `ASK`.
+- The provider is not called with fabricated tool data after Sentinel `DENY`.
+- The provider is not called with fabricated tool data after Sentinel authorization failure.
 - The provider is not called with fabricated tool data after tool failure.
-- Sentinel receives the trusted registered descriptor metadata.
-
-The bridge should verify the exact tool route is one of the v0.6 supported routes before coordinator execution. For routed descriptors changed or injected as `WRITE` or `DANGEROUS`, the coordinator must reach Sentinel, Sentinel must return `ASK` or `DENY`, and execution must be prevented with the existing stable HTTP behavior.
-
-For a routed descriptor changed or injected as non-`CORE`, the bridge must reject the route safely before returning any provider context, because v0.6 chat-assisted tools are limited to the Core execution boundary.
+- No chat turn is persisted after Sentinel `ASK`, Sentinel `DENY`, Sentinel failure, or tool failure.
+- Sentinel receives the trusted registered descriptor metadata for valid `READ` + `CORE` routed tools.
 
 In all non-allowed cases:
 
@@ -805,8 +875,11 @@ Use fake providers and injected tool registries/coordinators where appropriate.
 ### False Positive Tests
 
 - `What is RAM?` does not invoke a tool.
+- `What is a CPU?` does not invoke a tool.
+- `What is uptime?` does not invoke a tool.
 - `Explain how CPUs work.` does not invoke a tool.
 - `What is battery chemistry?` does not invoke a tool.
+- `Explain computer memory.` does not invoke a tool.
 - `Explain system uptime.` does not invoke a tool.
 - General computer knowledge questions remain ordinary chat.
 - Merely mentioning `system.status` inside unrelated prose does not execute it.
@@ -822,10 +895,13 @@ Use fake providers and injected tool registries/coordinators where appropriate.
 - Tool output cannot trigger another tool.
 - At most one tool executes per turn.
 - Routed descriptor must be trusted `READ` + `CORE`.
-- `WRITE` / `ASK` prevents execution.
-- `DANGEROUS` / `DENY` prevents execution.
-- Non-`CORE` routed descriptors are rejected safely.
-- Sentinel always receives trusted registered descriptor metadata.
+- `WRITE` routed descriptors are rejected by the chat `READ` + `CORE` boundary before coordinator execution.
+- `DANGEROUS` routed descriptors are rejected by the chat `READ` + `CORE` boundary before coordinator execution.
+- Non-`CORE` routed descriptors are rejected by the chat `READ` + `CORE` boundary before coordinator execution.
+- Sentinel `ASK` for an otherwise valid `READ` + `CORE` routed tool prevents execution.
+- Sentinel `DENY` for an otherwise valid `READ` + `CORE` routed tool prevents execution.
+- Sentinel authorization failure for an otherwise valid `READ` + `CORE` routed tool is normalized safely.
+- Sentinel always receives trusted registered descriptor metadata for valid `READ` + `CORE` routed tools.
 - Chat orchestration never calls `Tool.execute` directly.
 - Chat orchestration uses `ToolExecutionCoordinator`.
 
@@ -1034,6 +1110,9 @@ Do not add:
 - Tool-assisted chat returns exactly one tool name in `tools_used`.
 - Only `system.status` and `system.runtime_info` can be routed from chat.
 - The deterministic router inspects only the current user message.
+- The deterministic router does not blanket-reject `what is` or `what's` local/current-state requests.
+- The deterministic router routes local/current state requests only when supported metric/runtime concepts are paired with local, possessive, or current-state cues.
+- The deterministic router keeps general knowledge and definition requests as ordinary chat.
 - The deterministic router avoids the specified false positives.
 - No model-generated tool commands are implemented.
 - No provider-specific function or tool calling is implemented.
@@ -1044,6 +1123,9 @@ Do not add:
 - Tool output cannot trigger another tool execution.
 - Routed tools must have trusted `SideEffectLevel.READ`.
 - Routed tools must have trusted `ExecutionBoundary.CORE`.
+- The chat bridge resolves the trusted registered descriptor before calling `ToolExecutionCoordinator`.
+- The chat bridge rejects non-`READ` or non-`CORE` routed descriptors before calling `ToolExecutionCoordinator`.
+- The chat bridge does not rely on Sentinel policy to enforce the v0.6 chat allowlist.
 - Tool execution uses the existing `ToolExecutionCoordinator`.
 - Tool execution uses the existing Sentinel authorization path.
 - Chat orchestration never calls `Tool.execute` directly.
