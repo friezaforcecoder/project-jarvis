@@ -7,6 +7,10 @@ import platform
 from pydantic import BaseModel, ConfigDict
 
 from jarvis_core import __version__
+from jarvis_core.context import (
+    SystemStatusCollector,
+    collect_system_status_async,
+)
 from jarvis_core.tools.contracts import (
     ExecutionBoundary,
     SideEffectLevel,
@@ -19,6 +23,12 @@ from jarvis_core.tools.registry import ToolRegistry
 
 class RuntimeInfoArguments(BaseModel):
     """Arguments for system.runtime_info."""
+
+    model_config = ConfigDict(extra="forbid")
+
+
+class SystemStatusArguments(BaseModel):
+    """Arguments for system.status."""
 
     model_config = ConfigDict(extra="forbid")
 
@@ -61,9 +71,45 @@ class RuntimeInfoTool:
         )
 
 
+class SystemStatusTool:
+    """Return a safe local machine-health snapshot."""
+
+    def __init__(self, collector: SystemStatusCollector | None = None) -> None:
+        self._collector = collector
+
+    @property
+    def descriptor(self) -> ToolDescriptor:
+        """Return trusted system-status tool metadata."""
+
+        return ToolDescriptor(
+            name="system.status",
+            description="Return safe local CPU, memory, power, and uptime status.",
+            side_effect_level=SideEffectLevel.READ,
+            execution_boundary=ExecutionBoundary.CORE,
+            input_schema=SystemStatusArguments.model_json_schema(),
+        )
+
+    @property
+    def argument_model(self) -> type[BaseModel]:
+        """Return the typed argument model."""
+
+        return SystemStatusArguments
+
+    async def execute(
+        self,
+        arguments: BaseModel,
+        context: ToolExecutionContext,
+    ) -> ToolResult:
+        """Return safe local system-status metadata."""
+
+        status = await collect_system_status_async(self._collector)
+        return ToolResult(success=True, data=status.model_dump(mode="json"))
+
+
 def create_builtin_tool_registry() -> ToolRegistry:
     """Build the default registry of harmless built-in tools."""
 
     registry = ToolRegistry()
     registry.register(RuntimeInfoTool())
+    registry.register(SystemStatusTool())
     return registry

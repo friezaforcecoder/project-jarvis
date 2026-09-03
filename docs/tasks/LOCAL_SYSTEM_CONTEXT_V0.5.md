@@ -1,6 +1,6 @@
 # Project J.A.R.V.I.S. Local System Context v0.5
 
-Status: proposed
+Status: approved
 
 ## Goal
 
