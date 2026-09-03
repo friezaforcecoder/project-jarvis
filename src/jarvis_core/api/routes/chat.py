@@ -14,6 +14,7 @@ from jarvis_core.conversations import (
     ConversationSessionNotFoundError,
 )
 from jarvis_core.intelligence import ChatService, ProviderError, ProviderErrorCode
+from jarvis_core.tools import ToolErrorCode, ToolExecutionError
 
 router = APIRouter(tags=["chat"])
 
@@ -23,6 +24,17 @@ _PROVIDER_ERROR_STATUS = {
     ProviderErrorCode.REQUEST_FAILED: 502,
     ProviderErrorCode.INVALID_RESPONSE: 502,
     ProviderErrorCode.TIMEOUT: 504,
+}
+
+_TOOL_ERROR_STATUS = {
+    ToolErrorCode.DUPLICATE_TOOL: 500,
+    ToolErrorCode.TOOL_NOT_FOUND: 500,
+    ToolErrorCode.INVALID_ARGUMENTS: 500,
+    ToolErrorCode.APPROVAL_REQUIRED: 409,
+    ToolErrorCode.DENIED: 403,
+    ToolErrorCode.EXECUTION_FAILED: 500,
+    ToolErrorCode.SENTINEL_AUTHORIZATION_FAILED: 500,
+    ToolErrorCode.INTERNAL_ERROR: 500,
 }
 
 
@@ -46,6 +58,7 @@ class ChatResponse(BaseModel):
     model: str = Field(min_length=1)
     correlation_id: str = Field(min_length=1)
     session_id: str = Field(min_length=1)
+    tools_used: list[str] = Field(default_factory=list)
 
 
 class ChatError(BaseModel):
@@ -81,13 +94,24 @@ class PersistenceError(BaseModel):
     correlation_id: str = Field(min_length=1)
 
 
+class ChatToolError(BaseModel):
+    """Safe API error details for routed chat tool failures."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    code: ToolErrorCode
+    message: str = Field(min_length=1)
+    correlation_id: str = Field(min_length=1)
+    tool_name: str | None = Field(default=None, min_length=1)
+
+
 class ChatErrorResponse(BaseModel):
     """Stable error envelope for chat provider failures."""
 
     model_config = ConfigDict(extra="forbid")
 
     status: Literal["error"] = "error"
-    error: ChatError | SessionError | PersistenceError
+    error: ChatError | SessionError | PersistenceError | ChatToolError
 
 
 @router.post(
@@ -95,7 +119,9 @@ class ChatErrorResponse(BaseModel):
     response_model=ChatResponse,
     responses={
         500: {"model": ChatErrorResponse},
+        403: {"model": ChatErrorResponse},
         404: {"model": ChatErrorResponse},
+        409: {"model": ChatErrorResponse},
         502: {"model": ChatErrorResponse},
         504: {"model": ChatErrorResponse},
     },
@@ -131,6 +157,20 @@ async def post_chat(chat_request: ChatRequest, request: Request) -> ChatResponse
             )
         )
         return JSONResponse(status_code=500, content=error.model_dump(mode="json"))
+    except ToolExecutionError as exc:
+        tool_correlation_id = exc.correlation_id or correlation_id
+        error = ChatErrorResponse(
+            error=ChatToolError(
+                code=exc.code,
+                message=exc.safe_message,
+                correlation_id=tool_correlation_id,
+                tool_name=exc.tool_name,
+            )
+        )
+        return JSONResponse(
+            status_code=_TOOL_ERROR_STATUS[exc.code],
+            content=error.model_dump(mode="json"),
+        )
     except ProviderError as exc:
         error = ChatErrorResponse(
             error=ChatError(
@@ -152,4 +192,5 @@ async def post_chat(chat_request: ChatRequest, request: Request) -> ChatResponse
         model=result.model,
         correlation_id=result.correlation_id,
         session_id=result.session_id,
+        tools_used=result.tools_used,
     )

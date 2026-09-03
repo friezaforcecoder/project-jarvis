@@ -81,10 +81,11 @@ def create_app(
     fastapi_app.state.provider_registry = resolved_registry
     fastapi_app.state.tool_registry = resolved_tool_registry
     fastapi_app.state.sentinel = resolved_sentinel
-    fastapi_app.state.tool_execution_coordinator = ToolExecutionCoordinator(
+    tool_execution_coordinator = ToolExecutionCoordinator(
         resolved_tool_registry,
         resolved_sentinel,
     )
+    fastapi_app.state.tool_execution_coordinator = tool_execution_coordinator
     fastapi_app.state.conversation_repository = SQLiteConversationRepository(
         resolved_settings.database_path
     )
@@ -92,6 +93,8 @@ def create_app(
         resolved_settings,
         resolved_registry,
         fastapi_app.state.conversation_repository,
+        tool_registry=resolved_tool_registry,
+        tool_execution_coordinator=tool_execution_coordinator,
     )
     fastapi_app.include_router(chat_router, prefix="/v1")
     fastapi_app.include_router(health_router, prefix="/v1")

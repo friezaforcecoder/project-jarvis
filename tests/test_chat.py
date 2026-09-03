@@ -149,6 +149,7 @@ def test_post_chat_generates_session_id_and_persists_successful_turn(tmp_path) -
         "model": "fake-model",
         "correlation_id": "test-correlation",
         "session_id": session_id,
+        "tools_used": [],
     }
     assert provider_messages(provider.requests[0]) == [
         ("system", "You are test JARVIS."),

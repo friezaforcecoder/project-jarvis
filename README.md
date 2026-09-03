@@ -4,7 +4,7 @@ Project J.A.R.V.I.S. is a local-first personal AI operating layer. The goal is n
 
 ## Current Status
 
-This repository contains the early JARVIS Core foundation. It starts a small local FastAPI service, initializes SQLite runtime storage, exposes health, text chat, and direct deterministic tool execution endpoints, defines typed contracts, routes text intelligence through provider-neutral interfaces, persists simple bounded conversation sessions, sends direct tool executions through Sentinel authorization, and exposes one safe local system-status tool.
+This repository contains the early JARVIS Core foundation. It starts a small local FastAPI service, initializes SQLite runtime storage, exposes health, text chat, and deterministic tool execution endpoints, defines typed contracts, routes text intelligence through provider-neutral interfaces, persists simple bounded conversation sessions, sends tool executions through Sentinel authorization, exposes safe local system-status/runtime tools, and supports narrow deterministic chat-assisted use of those two read-only core tools.
 
 The current proposed and implemented milestones are documented in:
 
@@ -13,6 +13,7 @@ The current proposed and implemented milestones are documented in:
 - `docs/tasks/WORKING_MEMORY_V0.3.md`
 - `docs/tasks/TOOL_SENTINEL_V0.4.md`
 - `docs/tasks/LOCAL_SYSTEM_CONTEXT_V0.5.md`
+- `docs/tasks/CHAT_TOOL_INVOCATION_V0.6.md`
 
 ## Source Of Truth
 
@@ -112,7 +113,7 @@ curl http://127.0.0.1:8000/v1/health
 Expected semantic result:
 
 ```json
-{"status":"ok","service":"jarvis-core","version":"0.5.0"}
+{"status":"ok","service":"jarvis-core","version":"0.6.0"}
 ```
 
 ## Verify Chat
@@ -128,7 +129,7 @@ curl -X POST http://127.0.0.1:8000/v1/chat \
 Expected semantic result:
 
 ```json
-{"message":"Hello, I am JARVIS.","provider":"ollama","model":"llama3.2","correlation_id":"manual-chat-1","session_id":"generated-session-uuid"}
+{"message":"Hello, I am JARVIS.","provider":"ollama","model":"llama3.2","correlation_id":"manual-chat-1","session_id":"generated-session-uuid","tools_used":[]}
 ```
 
 The exact message text comes from the configured model. If `correlation_id` is omitted, JARVIS generates one and returns it. If `session_id` is omitted, JARVIS generates a new UUID session, persists the successful exchange, and returns that session ID.
@@ -161,7 +162,7 @@ Malformed session IDs are rejected with request validation before provider execu
 
 ## Verify Tool Execution
 
-JARVIS v0.4 adds a direct deterministic Tool Fabric endpoint. Chat does not call tools yet, and models do not select tools yet.
+JARVIS v0.4 adds a direct deterministic Tool Fabric endpoint. JARVIS v0.6 also allows chat to use two narrow, deterministic, read-only core tool routes. Models do not select arbitrary tools.
 
 Call the harmless built-in runtime-info tool:
 
@@ -187,7 +188,7 @@ Expected semantic result:
     "data": {
       "platform_family": "Windows",
       "python_version": "3.12.x",
-      "jarvis_version": "0.5.0"
+      "jarvis_version": "0.6.0"
     },
     "error": null
   }
@@ -251,7 +252,60 @@ Representative result:
 
 The tool deliberately excludes username, hostname, IP and MAC addresses, network interfaces, environment variables, processes, command lines, files, paths, drives, mounts, serial numbers, device IDs, account data, secrets, clipboard contents, screenshots, window titles, installed applications, and arbitrary file contents. It does not perform disk/storage enumeration.
 
-This is not the full Context Engine. There is no background monitoring, polling, cache, telemetry history, proactive alerting, or chat/LLM tool calling in v0.5.
+This is not the full Context Engine. There is no background monitoring, polling, cache, telemetry history, proactive alerting, or general LLM tool calling.
+
+## Verify Chat Tool Invocation
+
+JARVIS v0.6 adds deterministic chat-assisted use of only two tools:
+
+- `system.status`
+- `system.runtime_info`
+
+Both must be registered as trusted `read` + `core` tools before chat can execute them. Chat still sends every routed tool through the existing `ToolExecutionCoordinator` and Sentinel path. This is not general model-driven tool calling, and a user cannot ask chat to execute arbitrary registered tools.
+
+Ask for local system status:
+
+```bash
+curl -X POST http://127.0.0.1:8000/v1/chat \
+  -H "Content-Type: application/json" \
+  -d '{"message":"How is my PC doing?","correlation_id":"manual-status-chat"}'
+```
+
+Expected semantic result:
+
+```json
+{"message":"The model summarizes current local CPU, memory, power, and uptime.","provider":"ollama","model":"llama3.2","correlation_id":"manual-status-chat","session_id":"generated-session-uuid","tools_used":["system.status"]}
+```
+
+Ask for JARVIS runtime information:
+
+```bash
+curl -X POST http://127.0.0.1:8000/v1/chat \
+  -H "Content-Type: application/json" \
+  -d '{"message":"What version of JARVIS am I running?","correlation_id":"manual-runtime-chat"}'
+```
+
+Expected semantic result:
+
+```json
+{"message":"The model summarizes the current JARVIS, Python, and platform runtime metadata.","provider":"ollama","model":"llama3.2","correlation_id":"manual-runtime-chat","session_id":"generated-session-uuid","tools_used":["system.runtime_info"]}
+```
+
+General knowledge questions remain normal chat:
+
+```bash
+curl -X POST http://127.0.0.1:8000/v1/chat \
+  -H "Content-Type: application/json" \
+  -d '{"message":"What is RAM?","correlation_id":"manual-no-tool-chat"}'
+```
+
+Expected semantic result:
+
+```json
+{"message":"The model answers as ordinary chat.","provider":"ollama","model":"llama3.2","correlation_id":"manual-no-tool-chat","session_id":"generated-session-uuid","tools_used":[]}
+```
+
+Supported local/current-state examples include `What is my CPU usage?`, `What's my memory usage?`, `What is my computer uptime?`, and `Does this computer have a battery?`. General definition or explanation prompts such as `What is RAM?`, `What is a CPU?`, `What is uptime?`, and `Explain computer memory.` do not route to tools.
 
 Default Sentinel policy for direct tools:
 
@@ -305,8 +359,8 @@ The following are deliberately out of scope for the current early milestones:
 - Vector search
 - Windows automation
 - Browser automation
-- LLM/model tool calling
-- Automatic tool selection from chat
+- General LLM/model tool calling
+- Arbitrary or model-selected tool execution from chat
 - Streaming responses
 - React UI
 - Tauri
