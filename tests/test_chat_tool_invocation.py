@@ -270,7 +270,15 @@ def test_chat_tool_router_routes_supported_local_requests(message: str, tool_nam
         "What is RAM?",
         "What is a CPU?",
         "What is uptime?",
+        "Tell me about JARVIS version history.",
+        "Compare JARVIS version 0.5 to 0.6.",
+        "Write about JARVIS versions.",
+        "What changed between JARVIS versions?",
         "Explain how CPUs work.",
+        "Explain why my CPU usage spikes.",
+        "Explain my computer's memory usage.",
+        "How does my CPU usage work?",
+        "What is this CPU usage graph?",
         "What is battery chemistry?",
         "Explain computer memory.",
         "Explain system uptime.",
@@ -278,10 +286,41 @@ def test_chat_tool_router_routes_supported_local_requests(message: str, tool_nam
         "Write documentation mentioning system.status.",
         "What does the phrase system.runtime_info mean?",
         "Do not run system.status, just explain the idea.",
+        "Do not check my CPU usage.",
+        "Don't check my PC status.",
+        "Do not check this computer's status.",
     ],
 )
 def test_chat_tool_router_leaves_false_positives_as_normal_chat(message: str) -> None:
     assert ChatToolRouter().route(message) is None
+
+
+@pytest.mark.parametrize(
+    "message",
+    [
+        "Do not check my CPU usage.",
+        "Don't check my PC status.",
+        "Do not check this computer's status.",
+    ],
+)
+def test_explicit_negation_chat_executes_zero_tools(tmp_path, message: str) -> None:
+    settings = Settings(database_path=tmp_path / "jarvis.sqlite3", intelligence_provider="fake")
+    provider = FakeProvider()
+    status_tool = FakeTool(name=SYSTEM_STATUS_TOOL)
+    sentinel = RecordingSentinel()
+
+    with build_client(settings, provider, tool_registry(status_tool), sentinel) as client:
+        response = client.post(
+            "/v1/chat",
+            json={"message": message, "correlation_id": "negation-chat"},
+        )
+
+    assert response.status_code == 200
+    assert response.json()["tools_used"] == []
+    assert status_tool.executions == 0
+    assert sentinel.requests == []
+    assert len(provider.requests) == 1
+    assert trusted_contexts(provider.requests[0]) == []
 
 
 def test_chat_tool_router_chooses_no_route_for_ambiguous_multiple_intents() -> None:

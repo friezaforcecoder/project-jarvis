@@ -21,8 +21,11 @@ _SPACE_PATTERN = re.compile(r"\s+")
 
 _SUPPRESSOR_PHRASES = (
     "do not run",
+    "do not check",
     "dont run",
+    "dont check",
     "don't run",
+    "don't check",
     "without running",
     "just explain",
     "write documentation",
@@ -41,9 +44,10 @@ _EXPLANATION_PHRASES = (
     "how do",
 )
 
-_LOCAL_TOKENS = {"my", "this"}
+_LOCAL_TOKENS = {"my"}
 _MACHINE_TOKENS = {"computer", "pc", "machine", "system"}
 _STATE_TOKENS = {"usage", "using", "status", "current", "running"}
+_RUNTIME_CURRENT_TOKENS = {"running", "using", "this", "current"}
 
 
 class ChatToolIntent(StrEnum):
@@ -124,7 +128,7 @@ class ChatToolRouter:
             return False
 
         if "version" in tokens:
-            return bool(tokens & {"running", "using", "this", "my", "python", "jarvis"})
+            return bool(tokens & _RUNTIME_CURRENT_TOKENS)
         if "python" in tokens and tokens & {"version", "using", "runtime"}:
             return True
         if "runtime" in tokens and tokens & {"using", "running", "version"}:
@@ -208,10 +212,10 @@ def _has_local_reference(normalized: str, tokens: set[str]) -> bool:
 
 
 def _has_general_knowledge_shape(normalized: str, tokens: set[str]) -> bool:
-    if _has_local_reference(normalized, tokens):
-        return False
     if any(phrase in normalized for phrase in _EXPLANATION_PHRASES):
         return True
+    if _has_local_reference(normalized, tokens):
+        return False
     if normalized.startswith(("what is ", "what are ")):
         return True
     return False
