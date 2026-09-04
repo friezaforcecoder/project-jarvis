@@ -265,6 +265,8 @@ def trusted_contexts(request: ProviderRequest) -> list[str]:
         ("What application is currently in front?", ACTIVE_WINDOW_TOOL),
         ("What am I looking at on my computer?", ACTIVE_WINDOW_TOOL),
         ("Which app is active right now?", ACTIVE_WINDOW_TOOL),
+        ("Tell me which app is active right now.", ACTIVE_WINDOW_TOOL),
+        ("Tell me what window is currently active.", ACTIVE_WINDOW_TOOL),
     ],
 )
 def test_chat_tool_router_routes_supported_local_requests(message: str, tool_name: str) -> None:
@@ -311,10 +313,71 @@ def test_chat_tool_router_routes_supported_local_requests(message: str, tool_nam
         "Write code that gets the active window.",
         "Do not check my active window.",
         "Don't inspect what app I'm using.",
+        "Close my active window.",
+        "Move my current window to the left.",
+        "Minimize the active window.",
+        "Maximize my current window.",
+        "Resize the active window.",
+        "Switch to another app.",
+        "Focus the current window.",
+        "Is the active window API safe?",
+        "I like my current window layout.",
+        "What app should I use right now?",
+        "Which app should I open right now?",
+        "Recommend an app for me to use right now.",
     ],
 )
 def test_chat_tool_router_leaves_false_positives_as_normal_chat(message: str) -> None:
     assert ChatToolRouter().route(message) is None
+
+
+@pytest.mark.parametrize(
+    "message",
+    [
+        "Close my active window.",
+        "Move my current window to the left.",
+        "Minimize the active window.",
+        "Maximize my current window.",
+        "Resize the active window.",
+        "Switch to another app.",
+        "Focus the current window.",
+        "Is the active window API safe?",
+        "I like my current window layout.",
+        "What app should I use right now?",
+        "Which app should I open right now?",
+        "Recommend an app for me to use right now.",
+    ],
+)
+def test_active_window_false_positives_execute_no_tool_or_context(
+    tmp_path,
+    message: str,
+) -> None:
+    settings = Settings(database_path=tmp_path / "jarvis.sqlite3", intelligence_provider="fake")
+    provider = FakeProvider()
+    status_tool = FakeTool(name=SYSTEM_STATUS_TOOL)
+    runtime_tool = FakeTool(name=RUNTIME_INFO_TOOL)
+    active_window_tool = FakeTool(name=ACTIVE_WINDOW_TOOL)
+    sentinel = RecordingSentinel()
+
+    with build_client(
+        settings,
+        provider,
+        tool_registry(status_tool, runtime_tool, active_window_tool),
+        sentinel,
+    ) as client:
+        response = client.post(
+            "/v1/chat",
+            json={"message": message, "correlation_id": "active-window-false-positive"},
+        )
+
+    assert response.status_code == 200
+    assert response.json()["tools_used"] == []
+    assert status_tool.executions == 0
+    assert runtime_tool.executions == 0
+    assert active_window_tool.executions == 0
+    assert sentinel.requests == []
+    assert len(provider.requests) == 1
+    assert trusted_contexts(provider.requests[0]) == []
 
 
 @pytest.mark.parametrize(

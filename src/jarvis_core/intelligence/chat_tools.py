@@ -69,6 +69,24 @@ _ACTIVE_WINDOW_FALSE_POSITIVE_PHRASES = (
     "explain window titles",
     "write code",
 )
+_ACTIVE_WINDOW_CONTROL_TOKENS = {
+    "close",
+    "move",
+    "minimize",
+    "maximise",
+    "maximize",
+    "resize",
+    "switch",
+    "focus",
+    "open",
+}
+_ACTIVE_WINDOW_CHOICE_TOKENS = {
+    "recommend",
+    "recommendation",
+    "suggest",
+    "suggestion",
+    "should",
+}
 
 _LOCAL_TOKENS = {"my"}
 _MACHINE_TOKENS = {"computer", "pc", "machine", "system"}
@@ -194,6 +212,8 @@ class ChatToolRouter:
         has_concept = bool(tokens & _ACTIVE_WINDOW_CONCEPT_TOKENS) or "looking at" in normalized
         if not has_concept:
             return False
+        if not _has_active_window_information_request_shape(normalized):
+            return False
 
         if any(
             phrase in normalized
@@ -203,10 +223,6 @@ class ChatToolRouter:
                 "what window am i in",
                 "what am i looking at",
                 "currently in front",
-                "current window",
-                "active window",
-                "active app",
-                "active application",
             )
         ):
             return True
@@ -226,12 +242,10 @@ class ChatToolRouter:
         if tokens & {"app", "application"}:
             return bool(tokens & {"using", "active", "currently", "current"}) or any(
                 phrase in normalized
-                for phrase in ("right now", "in front", "am i using")
+                for phrase in ("in front", "am i using")
             )
         if "window" in tokens:
-            return bool(tokens & {"active", "current"}) or any(
-                phrase in normalized for phrase in ("what window am i in", "right now")
-            )
+            return bool(tokens & {"active", "current", "currently"})
         if tokens & {"front", "foreground"}:
             return "application" in tokens or "app" in tokens
         if "looking at" in normalized:
@@ -352,8 +366,27 @@ def _has_active_window_false_positive(normalized: str, tokens: set[str]) -> bool
         return True
     if any(phrase in normalized for phrase in _ACTIVE_WINDOW_FALSE_POSITIVE_PHRASES):
         return True
+    if tokens & _ACTIVE_WINDOW_CONTROL_TOKENS:
+        return True
+    if tokens & _ACTIVE_WINDOW_CHOICE_TOKENS:
+        return True
     if tokens & {"installed", "list", "background", "program", "programs"}:
+        return True
+    if tokens & {"api", "apis", "layout"}:
         return True
     if any(phrase in normalized for phrase in ("explain", "define", "how does", "how do")):
         return True
     return False
+
+
+def _has_active_window_information_request_shape(normalized: str) -> bool:
+    return normalized.startswith(
+        (
+            "what ",
+            "which ",
+            "tell me what ",
+            "tell me which ",
+            "can you tell me what ",
+            "can you tell me which ",
+        )
+    )
