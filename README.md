@@ -4,7 +4,7 @@ Project J.A.R.V.I.S. is a local-first personal AI operating layer. The goal is n
 
 ## Current Status
 
-This repository contains the early JARVIS Core foundation. It starts a small local FastAPI service, initializes SQLite runtime storage, exposes health, text chat, and deterministic tool execution endpoints, defines typed contracts, routes text intelligence through provider-neutral interfaces, persists simple bounded conversation sessions, sends tool executions through Sentinel authorization, exposes safe local system-status/runtime tools, and supports narrow deterministic chat-assisted use of those two read-only core tools.
+This repository contains the early JARVIS Core foundation. It starts a small local FastAPI service, initializes SQLite runtime storage, exposes health, text chat, and deterministic tool execution endpoints, defines typed contracts, routes text intelligence through provider-neutral interfaces, persists simple bounded conversation sessions, sends tool executions through Sentinel authorization, exposes safe local runtime/system-status/active-window tools, and supports narrow deterministic chat-assisted use of those read-only core tools.
 
 The current proposed and implemented milestones are documented in:
 
@@ -14,6 +14,7 @@ The current proposed and implemented milestones are documented in:
 - `docs/tasks/TOOL_SENTINEL_V0.4.md`
 - `docs/tasks/LOCAL_SYSTEM_CONTEXT_V0.5.md`
 - `docs/tasks/CHAT_TOOL_INVOCATION_V0.6.md`
+- `docs/tasks/ACTIVE_WINDOW_CONTEXT_V0.7.md`
 
 ## Source Of Truth
 
@@ -43,7 +44,7 @@ Early milestones should stay intentionally small. The expected local requirement
 
 `psutil` is installed with the Python package and is used only for the v0.5 `system.status` local health snapshot.
 
-Ollama is optional for manual chat verification. The automated tests do not require Ollama, network access, browser automation, operating-system automation, or external credentials.
+Ollama is optional for manual chat verification. The automated tests do not require Ollama, network access, browser automation, operating-system automation, a real foreground desktop session, or external credentials.
 
 Do not add a large stack during early milestones. Node, Tauri, Whisper, TTS, Home Assistant, browser automation, MCP, and richer UI work belong to later milestones unless a future task explicitly changes that scope.
 
@@ -113,7 +114,7 @@ curl http://127.0.0.1:8000/v1/health
 Expected semantic result:
 
 ```json
-{"status":"ok","service":"jarvis-core","version":"0.6.0"}
+{"status":"ok","service":"jarvis-core","version":"0.7.0"}
 ```
 
 ## Verify Chat
@@ -188,7 +189,7 @@ Expected semantic result:
     "data": {
       "platform_family": "Windows",
       "python_version": "3.12.x",
-      "jarvis_version": "0.6.0"
+      "jarvis_version": "0.7.0"
     },
     "error": null
   }
@@ -254,14 +255,83 @@ The tool deliberately excludes username, hostname, IP and MAC addresses, network
 
 This is not the full Context Engine. There is no background monitoring, polling, cache, telemetry history, proactive alerting, or general LLM tool calling.
 
+## Verify Active Window Context
+
+JARVIS v0.7 adds `context.active_window`, one explicit read-only foreground-window context tool. It uses the existing `POST /v1/tools/execute` endpoint, is registered as `SideEffectLevel.READ` + `ExecutionBoundary.CORE`, and is authorized by Sentinel before collection.
+
+Call the built-in active-window tool:
+
+```bash
+curl -X POST http://127.0.0.1:8000/v1/tools/execute \
+  -H "Content-Type: application/json" \
+  -d '{"tool_name":"context.active_window","arguments":{},"correlation_id":"manual-active-window-tool"}'
+```
+
+Representative Windows result:
+
+```json
+{
+  "status": "success",
+  "tool_name": "context.active_window",
+  "correlation_id": "manual-active-window-tool",
+  "sentinel": {
+    "decision": "allow",
+    "reason": "Safe no-write tool execution is allowed."
+  },
+  "result": {
+    "success": true,
+    "data": {
+      "available": true,
+      "platform_family": "Windows",
+      "application_name": "Code",
+      "window_title": "README.md - project-jarvis",
+      "reason": null
+    },
+    "error": null
+  }
+}
+```
+
+Representative unsupported-platform result:
+
+```json
+{
+  "status": "success",
+  "tool_name": "context.active_window",
+  "correlation_id": "manual-active-window-tool",
+  "sentinel": {
+    "decision": "allow",
+    "reason": "Safe no-write tool execution is allowed."
+  },
+  "result": {
+    "success": true,
+    "data": {
+      "available": false,
+      "platform_family": "Linux",
+      "application_name": null,
+      "window_title": null,
+      "reason": "unsupported_platform"
+    },
+    "error": null
+  }
+}
+```
+
+On Windows, `context.active_window` uses standard-library `ctypes` calls to inspect only the current foreground top-level window. On non-Windows platforms, the tool remains registered and returns deterministic `available: false` data with `reason: unsupported_platform`.
+
+Active-window titles and application labels can reveal sensitive local context. They may be returned to the explicit caller or supplied to the provider for the current turn, but normal structured logs omit the window title, application name, native values, paths, user prompt, provider prompt, provider response, and raw tool payload.
+
+This is not full Windows automation. JARVIS does not launch, close, move, focus, resize, list, or control windows; it does not send keyboard or mouse input; it does not inspect browser URLs, clipboard contents, screenshots, files, processes, installed applications, background windows, or window contents.
+
 ## Verify Chat Tool Invocation
 
-JARVIS v0.6 adds deterministic chat-assisted use of only two tools:
+JARVIS v0.6 added deterministic chat-assisted use of two tools, and v0.7 adds one more explicit active-window route:
 
 - `system.status`
 - `system.runtime_info`
+- `context.active_window`
 
-Both must be registered as trusted `read` + `core` tools before chat can execute them. Chat still sends every routed tool through the existing `ToolExecutionCoordinator` and Sentinel path. This is not general model-driven tool calling, and a user cannot ask chat to execute arbitrary registered tools.
+Each routed tool must be registered as trusted `read` + `core` before chat can execute it. Chat still sends every routed tool through the existing `ToolExecutionCoordinator` and Sentinel path. This is not general model-driven tool calling, and a user cannot ask chat to execute arbitrary registered tools.
 
 Ask for local system status:
 
@@ -291,6 +361,20 @@ Expected semantic result:
 {"message":"The model summarizes the current JARVIS, Python, and platform runtime metadata.","provider":"ollama","model":"llama3.2","correlation_id":"manual-runtime-chat","session_id":"generated-session-uuid","tools_used":["system.runtime_info"]}
 ```
 
+Ask for the current active window:
+
+```bash
+curl -X POST http://127.0.0.1:8000/v1/chat \
+  -H "Content-Type: application/json" \
+  -d '{"message":"What app am I using?","correlation_id":"manual-active-window-chat"}'
+```
+
+Expected semantic result:
+
+```json
+{"message":"The model summarizes the current foreground application/window from active-window tool data.","provider":"ollama","model":"llama3.2","correlation_id":"manual-active-window-chat","session_id":"generated-session-uuid","tools_used":["context.active_window"]}
+```
+
 General knowledge questions remain normal chat:
 
 ```bash
@@ -306,6 +390,8 @@ Expected semantic result:
 ```
 
 Supported local/current-state examples include `What is my CPU usage?`, `What's my memory usage?`, `What is my computer uptime?`, and `Does this computer have a battery?`. General definition or explanation prompts such as `What is RAM?`, `What is a CPU?`, `What is uptime?`, and `Explain computer memory.` do not route to tools.
+
+Supported active-window examples include `What app am I using?`, `What window am I in?`, `What's my active window?`, and `Which app is active right now?`. False positives such as `What applications are running?`, `List my open windows.`, `Explain window titles.`, and `Do not check my active window.` do not route to tools.
 
 Default Sentinel policy for direct tools:
 
