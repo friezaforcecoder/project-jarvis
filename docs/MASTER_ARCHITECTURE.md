@@ -3,6 +3,7 @@
 Status: planning baseline
 Date: 2026-09-01
 Source: JARVIS Project Watch architecture conversation and bootstrap planning
+Addenda: reliability, provenance, scoped capability, and memory architecture direction
 
 ## Mission
 
@@ -24,6 +25,8 @@ The system should eventually feel like one coherent assistant across desktop, vo
 8. Secrets stay out of the brain. Credentials belong in a secure broker or environment-specific store, not prompts, logs, source code, or committed config.
 9. Boring foundation first. Start as a modular monolith. Avoid premature microservices, queues, vector databases, agent swarms, or complex deployment.
 10. Every capability must be verifiable. Typed contracts, tests, failure handling, logging, and documented ownership are required for durable features.
+11. Recoverability and causal traceability are product requirements. Important actions, beliefs, and persistent state changes should eventually answer what happened, why it happened, who or what authorized it, and whether recovery is possible.
+12. Future architecture is not permission to create empty infrastructure. Add required fields and contracts when the relevant subsystem first appears; do not prebuild workers, skills, scheduler tables, vector indexes, graph databases, or update infrastructure before they are needed.
 
 ## Target System Shape
 
@@ -140,11 +143,24 @@ rich capture only when needed
 vision/model analysis only when useful and allowed
 ```
 
+Selective perception should escalate from lower-risk context to higher-risk context:
+
+```text
+system metadata
+-> active application/window metadata
+-> structured UI data
+-> explicitly attached document, page, or text
+-> specific screenshot
+-> vision model
+```
+
 Rules:
 
 - Do not continuously screenshot the desktop and feed it to an LLM.
+- Do not continuously stream workspaces, pages, or screens into models.
 - Treat captured webpage, email, document, and screen text as untrusted data.
 - Sensitive captures need policy controls and audit logs.
+- Context attachments should eventually be previewable and removable where practical.
 - Bootstrap v0.1 must not implement context capture beyond basic application health/configuration concerns.
 
 ## System 4: Memory
@@ -173,7 +189,90 @@ Every durable memory should eventually include:
 - Related entities
 - Contradictions or supersession links
 
+Durable memory should preserve provenance strongly enough for JARVIS to answer "How do you know that?" from recorded memory, event, or project history. Retrieval records should eventually expose fields equivalent to:
+
+- Memory ID
+- Content
+- Source
+- Confidence
+- Observed-at timestamp
+- Last-verified-at timestamp
+
+Memory retrieval should represent answerability directly instead of forcing the model to infer uncertainty from missing context. Long-term retrieval states should include:
+
+- `known`
+- `probably_known`
+- `conflicting`
+- `stale`
+- `unknown`
+
+Knowledge gaps should be representable in the retrieval result. For example:
+
+```json
+{
+  "answerability": "conflicting",
+  "knowledge_gaps": [
+    "Current preferred browser is unclear."
+  ]
+}
+```
+
 The system should eventually include a maintenance cycle that can merge duplicates, detect contradictions, summarize old episodes, promote useful facts, expire temporary facts, associate related memories, identify unfinished tasks, compress old conversations, and update project summaries.
+
+Memory maintenance should identify duplicates, contradictions, superseded facts, stale facts, and facts requiring reverification. New facts may supersede older facts without destroying historical provenance.
+
+Memory retrieval has two eventual paths:
+
+Fast retrieval:
+
+```text
+FTS
++ metadata
++ entities
++ optional similarity retrieval
+```
+
+Use fast retrieval for normal conversation. "Fast memory" does not require a vector database now. FTS and metadata can come first; embeddings and vector search should be added only when useful.
+
+Deep synthesis:
+
+```text
+retrieve
+-> entity/relationship expansion
+-> rerank
+-> reconcile contradictions
+-> synthesize
+-> return provenance
+```
+
+Use deep synthesis only when the question genuinely requires expensive historical reasoning.
+
+Relationship data may initially live in the relational database. The conceptual knowledge-graph shape is:
+
+```text
+entities
+
+entity_links
+  source_entity
+  relationship
+  target_entity
+  confidence
+  provenance
+```
+
+Example relationships include:
+
+- `works_on`
+- `knows`
+- `owns`
+- `uses`
+- `prefers`
+- `depends_on`
+- `located_at`
+- `related_to`
+- `member_of`
+
+Do not require Neo4j or another graph database unless real requirements justify it.
 
 Bootstrap v0.1 must not implement memory intelligence, vector search, long-term retrieval, or memory consolidation.
 
@@ -230,6 +329,46 @@ Potential tool domains:
 - Development tools
 - Operating-system utilities
 - Custom user tools
+
+Future skill libraries must support explicit scopes:
+
+```text
+skills/
+  system/
+  shared/
+  users/<user-id>/
+  projects/<project-id>/
+```
+
+Scope meanings:
+
+- System: trusted built-in JARVIS capabilities.
+- Shared: capabilities intentionally available across the environment.
+- User: identity-private capabilities.
+- Project: capabilities relevant only to one project.
+
+Every skill should eventually expose at least:
+
+- Skill ID
+- Version
+- Scope
+- Owner
+- Permissions
+- Trust level
+- Source
+
+Recommended lookup priority:
+
+```text
+active project
+-> current user
+-> shared
+-> system
+```
+
+Conflicting names must never silently override one another. Skill resolution must be deterministic and auditable.
+
+Do not implement a skill system before an active task requires it.
 
 Bootstrap v0.1 should define a minimal `Tool` contract only. It should not implement browser automation, Windows automation, MCP, Home Assistant, or production app integrations.
 
@@ -319,6 +458,48 @@ Rules:
 - Recurring monitors should remember what they already reported.
 - Deterministic change checks should avoid unnecessary model calls.
 - Events need stable schemas and correlation IDs.
+- Long-term events should use `event_id`, `correlation_id`, and `causation_id`.
+
+Causal identifier semantics:
+
+- `event_id`: unique identity for one event.
+- `causation_id`: the immediate parent event or action that directly caused this event.
+- `correlation_id`: the larger user operation, task, or trace that groups related events.
+
+Example causal chain:
+
+```text
+conversation.message
+-> intent.detected
+-> tool.requested
+-> sentinel.allowed
+-> tool.executed
+-> application.opened
+```
+
+JARVIS must eventually be able to reconstruct this chain from recorded events. Do not use an LLM to invent causal explanations after the fact.
+
+Future recurring monitors and watchers must preserve state. Suggested fields include:
+
+- Watcher ID
+- Last checked-at timestamp
+- Last successful-at timestamp
+- Last result hash
+- Last notification-at timestamp
+- Known items
+- Scratch state
+- Failure count
+
+Watcher flow should prefer deterministic change detection:
+
+```text
+fetch
+-> hash relevant state
+-> unchanged? stop
+-> changed? AI evaluation if needed
+```
+
+Avoid duplicate alerts and unnecessary model cost. Do not implement scheduler persistence until a scheduling or watcher task requires it.
 
 Bootstrap v0.1 should define basic event contracts only. It should not implement autonomous agents, scheduled monitors, or proactive notifications.
 
@@ -354,6 +535,31 @@ reports result back to JARVIS
         |
 human reviews before merge
 ```
+
+Future replaceable workers should expose:
+
+- Heartbeat
+- Health status
+- Capabilities
+- Last successful operation
+- Last error
+- Restart count
+
+JARVIS Core supervises workers. Worker recovery should follow a bounded flow:
+
+```text
+failure
+-> classify
+-> bounded restart/backoff
+-> health check
+-> mark unavailable if recovery fails
+```
+
+Never retry forever. Worker failure must not crash JARVIS Core.
+
+Future long-running specialist work must not block the primary conversation. A research, coding, or admin task may run in a background task or session while the user continues normal JARVIS interaction. Background work should preserve task identity and causal provenance back to the originating request.
+
+Do not implement workers, background sessions, or agent orchestration before an active task requires them.
 
 Bootstrap v0.1 must not implement autonomous agents, Codex workers, research workers, or agent swarms.
 
@@ -405,6 +611,121 @@ An ideal audit record includes:
 
 Bootstrap v0.1 should include structured logging basics, but not a full audit system.
 
+## Reliability, Lifecycle, And Health
+
+JARVIS should remain operational when optional components fail. Optional provider or integration failures should degrade affected capabilities instead of killing the entire assistant. Core, Sentinel, and memory-critical failures may block affected functionality.
+
+Standard subsystem health states:
+
+- `HEALTHY`
+- `DEGRADED`
+- `UNAVAILABLE`
+- `STARTING`
+- `FAILED`
+
+Example subsystem view:
+
+```text
+Core              HEALTHY
+Memory            HEALTHY
+Sentinel          HEALTHY
+Windows Bridge    HEALTHY
+Ollama            UNAVAILABLE
+Home Assistant    UNAVAILABLE
+```
+
+JARVIS should disclose degraded capability when relevant rather than fail globally.
+
+Long-term JARVIS must support transactional application updates:
+
+```text
+discover
+-> download candidate
+-> verify integrity
+-> stage separately
+-> rehearse/test migrations
+-> start staged JARVIS
+-> health/readiness checks
+-> promote OR rollback
+```
+
+Transactional update requirements:
+
+- Version identity
+- Integrity/checksum verification
+- Staged install
+- Migration plan
+- Health verification
+- Rollback
+- Audit record
+
+The current working installation must remain recoverable until promotion succeeds. A failed update must never leave JARVIS partially upgraded.
+
+For persistent data, migration rehearsal should use a staged, copied, or snapshotted environment where practical. The live database must not be irreversibly modified before backup and recovery requirements have been satisfied.
+
+Failed upgrades should eventually:
+
+```text
+rollback
+-> collect safe diagnostics
+-> record migration, health, and component failures
+-> create an UpdateFailure task
+```
+
+A future coding or debug worker may investigate in isolation. Repair workers must not modify the live installation without Sentinel authorization.
+
+Resource pressure should protect essential authority and state before optional work.
+
+Protect first:
+
+1. Sentinel
+2. JARVIS Core
+3. Essential event and task state
+4. Required OS or Windows bridge
+5. Active user-control surfaces such as voice when configured
+
+Sacrifice or degrade first:
+
+- Idle specialist workers
+- Background research
+- Expensive local LLMs
+- Optional caches or services
+
+A local model must not be allowed to destabilize Core. The Intelligence Router should permit fallback providers when available.
+
+Do not implement update infrastructure, resource management, or health supervision before an active task requires it.
+
+## Causal Provenance And Explanations
+
+For important actions, JARVIS should eventually answer from recorded system state:
+
+- What happened?
+- Why did it happen?
+- Who or what authorized it?
+- Can it be recovered or undone?
+
+For important beliefs, JARVIS should eventually answer:
+
+- What does JARVIS believe?
+- Where did that information come from?
+- How confident is it?
+- Is it current, stale, or contradicted?
+
+These are architectural capabilities, not after-the-fact debugging features.
+
+The future Activity UI should expose recorded causal chains. Example:
+
+```text
+Spotify opened
+|- requested by user voice command
+|- interpreted as application.open
+|- tool system.open_app
+|- Sentinel ALLOW
+`- launch succeeded
+```
+
+This explanation must be generated from recorded event provenance, not model speculation.
+
 ## Observability And Evals
 
 JARVIS must be debuggable.
@@ -417,6 +738,8 @@ Observability direction:
 - Provider latency and error records
 - Clear startup errors
 - Testable health checks
+- Recorded causal chains for important actions
+- Recorded provenance for important beliefs
 
 Evaluation direction:
 
@@ -428,6 +751,19 @@ Evaluation direction:
 - End-to-end task tests
 
 Bootstrap v0.1 should include ordinary tests for the foundation it creates. More advanced evals belong later.
+
+## Persistent Schema And Migration Discipline
+
+Every future persistent schema change should document:
+
+- Forward migration
+- Compatibility considerations
+- Migration tests
+- Rollback or recovery strategy when practical
+
+Migration tests should exercise realistic previous-version fixtures. Migration records must be written only after the migration completes successfully, and persistent data must not be deleted or recreated just to simplify upgrades.
+
+Transactional updates and migration rehearsal are long-term architecture requirements, not permission to add an external migration framework or unused update system prematurely.
 
 ## Initial Technical Direction
 
@@ -456,6 +792,15 @@ Avoid adding these during Bootstrap v0.1 unless a later task explicitly changes 
 - Home Assistant integrations
 - MCP servers
 - Production deployment infrastructure
+
+Also avoid adding empty scaffolding for:
+
+- Workers
+- Skill libraries
+- Scheduler or watcher tables
+- Vector databases
+- Graph databases
+- Update infrastructure
 
 ## Suggested Package Boundaries
 
@@ -529,9 +874,40 @@ Current implementation workflow:
 - `AGENTS.md` remains the canonical coding-agent instruction file.
 - Legacy compatibility files may point agents back to `AGENTS.md`, but must not become a second source of truth.
 
+## Roadmap Timing For Cross-Cutting Contracts
+
+Early, before retrofit becomes expensive:
+
+- `event_id`, `correlation_id`, and `causation_id` semantics.
+- Subsystem health-state contract when a subsystem registry appears.
+- Skill scope field when a skill subsystem begins.
+- Memory provenance fields when durable long-term memory begins.
+- Scheduler state model when scheduling or watchers begin.
+
+Do not create empty infrastructure merely to satisfy these future fields today.
+
+Mid development:
+
+- Degraded mode.
+- Worker supervision.
+- Knowledge-gap retrieval.
+- Background specialist sessions.
+- Project and user skill resolution.
+
+Pre-1.0 hardening:
+
+- Transactional updates.
+- Automatic rollback.
+- Resource-pressure handling.
+- Migration recovery.
+- Update triage.
+- Causal Activity UI.
+
 ## Scope Discipline
 
 The active task document controls the implementation scope. Architecture documents describe future direction, not permission to build everything now.
+
+This architecture update does not expand Active Window Context v0.7. No current implementation milestone should automatically inherit every feature described here. The active task document remains the implementation scope authority.
 
 When in doubt:
 
