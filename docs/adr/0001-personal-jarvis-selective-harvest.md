@@ -4,7 +4,7 @@ Status: proposed; documentation may be reviewed independently
 
 Date: 2026-09-11
 
-Implementation gate: provider Phase 1 is blocked until PR #10 is merged into `main`.
+Implementation gate: PR #10 merged into `main` on 2026-09-11 at `b3a1a3e26e844d57105e5609509b2930ae97e1f1`. Provider Phase 1 starts on a fresh branch after the documentation in PR #11 lands.
 
 ## Context
 
@@ -12,7 +12,7 @@ Implementation gate: provider Phase 1 is blocked until PR #10 is merged into `ma
 
 The [Personal Jarvis architecture harvest](../PERSONAL_JARVIS_HARVEST.md) recommends learning from a mature reference system while retaining Project J.A.R.V.I.S. ownership and module boundaries. The existing intelligence layer already has a provider protocol, capability labels, a registry, normalized errors, and an Ollama adapter. Capability selection can be strengthened within those interfaces.
 
-PR #10 remains focused on active-window context v0.7. The harvest documentation can be reviewed separately, but provider implementation must start on a new branch from updated `main` only after that PR is merged.
+PR #10 delivered active-window context v0.7 and has merged. PR #11 remains a separate documentation-only change. Provider implementation must start on a fresh branch from updated `main` after PR #11 lands.
 
 ## Decision
 
@@ -61,6 +61,6 @@ No Personal Jarvis implementation source code is copied in this documentation ch
 
 ## Validation And Follow-up
 
-The documentation review should check links, canonical ownership, the PR #10 dependency, and consistency between this ADR and the Phase 1 task. Passing documentation checks does not satisfy the future implementation's acceptance criteria.
+The documentation review should check links, canonical ownership, the satisfied PR #10 prerequisite, the separate PR #11/Phase 1 sequence, and consistency between this ADR and the Phase 1 task. Passing documentation checks does not satisfy the future implementation's acceptance criteria.
 
-After PR #10 is merged, implement only the Phase 1 task on a new branch from updated `main`. Run its focused tests, the complete test suite, compilation checks, whitespace checks, and documented startup verification. Record the actual results and any remaining limitations in the implementing PR.
+After PR #11 lands, implement only the Phase 1 task on a fresh branch from updated `main`. Run its focused tests, the complete test suite, compilation checks, whitespace checks, and documented startup verification. Record the actual results and any remaining limitations in the implementing PR.

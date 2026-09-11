@@ -1,6 +1,6 @@
 # Selective Harvest Phase 1: Provider Capability Contracts
 
-Status: proposed; implementation blocked until PR #10 is merged into `main`
+Status: proposed; PR #10 merge prerequisite satisfied, implementation pending PR #11 landing
 
 Date: 2026-09-11
 
@@ -14,15 +14,15 @@ This task concretizes the first implementation step in the [Personal Jarvis harv
 
 ## Sequencing And Branch
 
-The harvest documentation and this task may be reviewed independently of PR #10. They do not authorize expanding its active-window scope.
+PR #10 merged active-window context v0.7 on 2026-09-11 at `b3a1a3e26e844d57105e5609509b2930ae97e1f1`. Its merge prerequisite is satisfied. The harvest documentation and this task remain documentation-only in PR #11 and do not expand v0.7.
 
 Before runtime implementation:
 
-1. Verify that PR #10 is merged into `main`.
+1. Verify that PR #11, including this specification, has landed in `main`; PR #10 is already merged.
 2. Update the local view of `origin/main` and inspect the resulting provider contracts and tests.
-3. Create a separate implementation branch from that updated `main`.
+3. Create a fresh, separate implementation branch from that updated `main`.
 
-Until the merge prerequisite is satisfied, keep this work documentation-only. Do not implement this task on the active-window branch or assume that a passing PR review means the PR has merged.
+Keep PR #11 documentation-only. After it lands, implement this task on the fresh branch, not on the harvest or active-window branch. A passing PR review does not mean the PR has merged.
 
 ## Required Reading
 
@@ -118,7 +118,7 @@ If resolution logging is added, restrict it to safe event names, normalized capa
 - Add `tests/test_intelligence_provider_capabilities.py`.
 - Update focused documentation to describe the implemented interface and actual validation results.
 
-Do not change Sentinel, Tool Fabric, chat-tool routing, persistence, runtime dependencies, or package versions as incidental work. Change the chat router only if inspection after the PR #10 merge reveals a concrete compatibility requirement, and explain that need in the implementing PR.
+Do not change Sentinel, Tool Fabric, chat-tool routing, persistence, runtime dependencies, or package versions as incidental work. Change the chat router only if inspection of updated `main` reveals a concrete compatibility requirement, and explain that need in the implementing PR.
 
 ## Required Tests
 
@@ -170,4 +170,4 @@ The implementation is complete only when:
 
 Report the implementation branch, commit, PR if created, files changed, exact final public interface, test/check results, startup verification, and any limitations. State explicitly that no new providers, dependencies, storage, workers, voice, UI, or computer-control features were added.
 
-Documentation-only review does not fulfill these runtime acceptance criteria. Record Phase 1 as pending until its separately gated implementation and verification are complete.
+Documentation-only review does not fulfill these runtime acceptance criteria. Record Phase 1 as pending until its separate implementation after PR #11 lands and its verification are complete.

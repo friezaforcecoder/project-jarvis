@@ -15,9 +15,9 @@ Project J.A.R.V.I.S. should not become a fork of Personal Jarvis. JARVIS already
 
 ## Current Project J.A.R.V.I.S. State
 
-The current Project J.A.R.V.I.S. mainline is still a lean modular monolith with FastAPI, Pydantic, SQLite, structured logging, provider contracts, chat routing, tool contracts, Sentinel policy, and local context foundations. PR #10 adds active-window context on top of that, but the active-window branch should remain focused on v0.7.
+The current Project J.A.R.V.I.S. mainline is still a lean modular monolith with FastAPI, Pydantic, SQLite, structured logging, provider contracts, chat routing, tool contracts, Sentinel policy, and local context foundations. [PR #10](https://github.com/friezaforcecoder/project-jarvis/pull/10) merged active-window context v0.7 on 2026-09-11 at `b3a1a3e26e844d57105e5609509b2930ae97e1f1`.
 
-The harvest work should be a separate documentation and future-implementation track. It should not expand PR #10 and should not introduce new runtime dependencies.
+The harvest work remains a separate documentation and future-implementation track. [PR #11](https://github.com/friezaforcecoder/project-jarvis/pull/11) contains only the harvest, ADR, and Phase 1 specification. It does not change the merged v0.7 implementation or introduce runtime dependencies.
 
 ## Reviewed Personal Jarvis Sources
 
@@ -190,9 +190,9 @@ Project J.A.R.V.I.S. should take these lessons, but keep its own Sentinel model:
 
 ## Recommended Development Plan
 
-1. Finish and merge PR #10 after final PC smoke testing.
-2. Land this harvest document as a separate docs-only PR from `origin/main`.
-3. Build provider capability hardening next.
+1. PR #10 merged on 2026-09-11; the v0.7 merge prerequisite is satisfied.
+2. Land this harvest document, ADR, and Phase 1 specification in the separate docs-only PR #11, rebased onto current `origin/main`.
+3. After PR #11 lands, build provider capability hardening from a fresh branch off updated `main`.
 4. Add credential broker and config mutation safety after provider capability hardening.
 5. Add event/provenance records before long-running workers.
 6. Add specialist worker MVP with isolated worktrees and signed observations.
@@ -207,7 +207,7 @@ Title: Selective Harvest Phase 1 - Provider Capability Contracts and Architectur
 
 Repository: `friezaforcecoder/project-jarvis`
 
-Branch: create a new branch from `main`, after PR #10 is merged.
+Branch: create a fresh branch from updated `main` after PR #11 lands. PR #10 has already merged; Phase 1 remains unimplemented in this documentation PR.
 
 ### Goal
 
