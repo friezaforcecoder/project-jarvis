@@ -78,7 +78,7 @@ The registry constructs an allowlisted `ProviderInfo` snapshot from the existing
 
 Changing or replacing the provider's capability attribute after registration must not alter the stored capability snapshot. Re-registering explicitly replaces both the provider and its metadata snapshot. Returning a descriptor must not provide mutable access to registry state.
 
-Do not add the harvest's suggested `health`, `local`, or `fallback_family` fields in this phase. No current consumer or live health check needs them. Capability metadata must not imply that registration verified provider readiness.
+Do not add `health`, `local`, or `fallback_family` fields in this phase. No current consumer or live health check needs them. Capability metadata must not imply that registration verified provider readiness.
 
 ## Deterministic Resolution
 

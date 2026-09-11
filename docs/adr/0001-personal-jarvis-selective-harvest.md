@@ -31,7 +31,7 @@ The first implementation milestone is limited to provider capability metadata an
 
 Provider identifiers identify adapters; they do not decide capabilities. Provider metadata contains an allowlisted contract, with no settings payload, credentials, endpoint URLs, raw environment values, or credential-file paths.
 
-The broader harvest suggests health, locality, and fallback-family fields. Defer those fields until an active milestone consumes them and defines their semantics. This phase does not probe provider health, infer readiness from registration, or introduce fallback execution. Capability advertisement describes the adapter interface, not a successful live provider test.
+Defer health, locality, and fallback-family fields until an active milestone consumes them and defines their semantics. This phase does not probe provider health, infer readiness from registration, or introduce fallback execution. Capability advertisement describes the adapter interface, not a successful live provider test.
 
 Documentation should capture decisions and exact regression requirements in focused ADRs and task documents. Additional architecture registers are useful only when they have concrete content and ownership; this decision does not require empty anti-pattern, bug-class, or context documents.
 
