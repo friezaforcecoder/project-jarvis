@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "project-jarvis-core"
-version = "0.6.0"
+version = "0.7.0"
 description = "Bootstrap foundation for the local-first JARVIS Core service."
 readme = "README.md"
 requires-python = ">=3.12"
