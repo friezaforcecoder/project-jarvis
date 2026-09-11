@@ -261,6 +261,7 @@ def trusted_contexts(request: ProviderRequest) -> list[str]:
         ("What application am I using right now?", ACTIVE_WINDOW_TOOL),
         ("What window am I in?", ACTIVE_WINDOW_TOOL),
         ("What's my active window?", ACTIVE_WINDOW_TOOL),
+        ("What’s my active window?", ACTIVE_WINDOW_TOOL),
         ("What is my current window?", ACTIVE_WINDOW_TOOL),
         ("What application is currently in front?", ACTIVE_WINDOW_TOOL),
         ("What am I looking at on my computer?", ACTIVE_WINDOW_TOOL),
@@ -307,12 +308,20 @@ def test_chat_tool_router_routes_supported_local_requests(message: str, tool_nam
         "Tell me about Microsoft Windows.",
         "What apps are installed?",
         "What applications are running?",
+        "What apps are currently running?",
+        "What applications are currently running?",
+        "Which applications are currently running?",
+        "What apps are running right now?",
         "List my open windows.",
         "What programs are running in the background?",
         "Explain window titles.",
         "Write code that gets the active window.",
         "Do not check my active window.",
         "Don't inspect what app I'm using.",
+        "Don’t inspect my active window.",
+        "What app am I using? Don’t inspect my active window.",
+        "What app am I using? Don‘t inspect my active window.",
+        "Don’t inspect my active window. What app am I using?",
         "Close my active window.",
         "Move my current window to the left.",
         "Minimize the active window.",
@@ -334,6 +343,11 @@ def test_chat_tool_router_leaves_false_positives_as_normal_chat(message: str) ->
 @pytest.mark.parametrize(
     "message",
     [
+        "What apps are currently running?",
+        "What applications are currently running?",
+        "Which applications are currently running?",
+        "What apps are running right now?",
+        "Which of my apps is active, and what version of JARVIS am I running?",
         "Close my active window.",
         "Move my current window to the left.",
         "Minimize the active window.",
@@ -378,6 +392,8 @@ def test_active_window_false_positives_execute_no_tool_or_context(
     assert sentinel.requests == []
     assert len(provider.requests) == 1
     assert trusted_contexts(provider.requests[0]) == []
+    assert provider.requests[0].messages[-1].role.value == "user"
+    assert provider.requests[0].messages[-1].content == message
 
 
 @pytest.mark.parametrize(
@@ -388,19 +404,26 @@ def test_active_window_false_positives_execute_no_tool_or_context(
         "Do not check this computer's status.",
         "Do not check my active window.",
         "Don't inspect what app I'm using.",
+        "Don’t inspect my active window.",
+        "What app am I using? Don't inspect my active window.",
+        "What app am I using? Don’t inspect my active window.",
+        "What app am I using? Don‘t inspect my active window.",
+        "Don’t inspect my active window. What app am I using?",
+        "What app am I using? Don’t check my active window.",
     ],
 )
 def test_explicit_negation_chat_executes_zero_tools(tmp_path, message: str) -> None:
     settings = Settings(database_path=tmp_path / "jarvis.sqlite3", intelligence_provider="fake")
     provider = FakeProvider()
     status_tool = FakeTool(name=SYSTEM_STATUS_TOOL)
+    runtime_tool = FakeTool(name=RUNTIME_INFO_TOOL)
     active_window_tool = FakeTool(name=ACTIVE_WINDOW_TOOL)
     sentinel = RecordingSentinel()
 
     with build_client(
         settings,
         provider,
-        tool_registry(status_tool, active_window_tool),
+        tool_registry(status_tool, runtime_tool, active_window_tool),
         sentinel,
     ) as client:
         response = client.post(
@@ -411,10 +434,13 @@ def test_explicit_negation_chat_executes_zero_tools(tmp_path, message: str) -> N
     assert response.status_code == 200
     assert response.json()["tools_used"] == []
     assert status_tool.executions == 0
+    assert runtime_tool.executions == 0
     assert active_window_tool.executions == 0
     assert sentinel.requests == []
     assert len(provider.requests) == 1
     assert trusted_contexts(provider.requests[0]) == []
+    assert provider.requests[0].messages[-1].role.value == "user"
+    assert provider.requests[0].messages[-1].content == message
 
 
 @pytest.mark.parametrize(
@@ -422,6 +448,7 @@ def test_explicit_negation_chat_executes_zero_tools(tmp_path, message: str) -> N
     [
         "What is my CPU usage and what version of JARVIS am I running?",
         "What app am I using and what version of JARVIS am I running?",
+        "Which of my apps is active, and what version of JARVIS am I running?",
         "What app am I using and how is my PC doing?",
     ],
 )

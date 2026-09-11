@@ -61,7 +61,9 @@ _ACTIVE_WINDOW_FALSE_POSITIVE_PHRASES = (
     "apps are installed",
     "applications are installed",
     "applications are running",
+    "applications are currently running",
     "apps are running",
+    "apps are currently running",
     "list my open windows",
     "open windows",
     "running in the background",
@@ -294,7 +296,7 @@ def build_trusted_tool_context_message(
 
 
 def _normalize(message: str) -> str:
-    normalized = message.lower()
+    normalized = message.lower().replace("\u2018", "'").replace("\u2019", "'")
     normalized = normalized.replace("what's", "what is")
     normalized = normalized.replace("whats", "what is")
     normalized = normalized.replace("how's", "how is")
