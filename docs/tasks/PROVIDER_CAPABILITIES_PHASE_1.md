@@ -1,6 +1,6 @@
 # Selective Harvest Phase 1: Provider Capability Contracts
 
-Status: proposed; PR #10 merge prerequisite satisfied, implementation pending PR #11 landing
+Status: implemented and locally verified on `codex/provider-capabilities-phase-1`; pending review and merge
 
 Date: 2026-09-11
 
@@ -14,7 +14,7 @@ This task concretizes the first implementation step in the [Personal Jarvis harv
 
 ## Sequencing And Branch
 
-PR #10 merged active-window context v0.7 on 2026-09-11 at `b3a1a3e26e844d57105e5609509b2930ae97e1f1`. Its merge prerequisite is satisfied. The harvest documentation and this task remain documentation-only in PR #11 and do not expand v0.7.
+PR #10 merged active-window context v0.7 on 2026-09-11 at `b3a1a3e26e844d57105e5609509b2930ae97e1f1`. PR #11 then landed the documentation-only harvest and this specification at `7a7a8211f14c8dea34bdd568c9e30a2a4338daa0`. The implementation branch `codex/provider-capabilities-phase-1` starts from that updated mainline; both merge prerequisites are satisfied.
 
 Before runtime implementation:
 
@@ -171,3 +171,19 @@ The implementation is complete only when:
 Report the implementation branch, commit, PR if created, files changed, exact final public interface, test/check results, startup verification, and any limitations. State explicitly that no new providers, dependencies, storage, workers, voice, UI, or computer-control features were added.
 
 Documentation-only review does not fulfill these runtime acceptance criteria. Record Phase 1 as pending until its separate implementation after PR #11 lands and its verification are complete.
+
+## Implementation Record
+
+Implemented on a fresh branch from `7a7a8211f14c8dea34bdd568c9e30a2a4338daa0` after PR #11 merged.
+
+The public additions are `ProviderInfo(provider_id, capabilities)`, `ProviderRegistry.info(provider_id) -> ProviderInfo`, and `ProviderRegistry.resolve(required_capabilities: frozenset[ProviderCapability]) -> IntelligenceProvider`. The registry stores frozen metadata at registration, matches all required capabilities in registration order, and preserves exact-ID default lookup. Re-registration refreshes the snapshot without moving the provider's selection position.
+
+Local verification on Python 3.12:
+
+- Focused capability and registry tests: 31 passed.
+- Complete `python -m pytest` suite: 285 passed, with one existing Starlette/httpx deprecation warning.
+- `python -m compileall src tests` and `git diff --check`: passed.
+- Documented startup and `/v1/health`: passed at version `0.7.0` with an unavailable Ollama endpoint and isolated temporary state.
+- The README registry example ran successfully without contacting Ollama; documentation links resolve.
+
+No new providers, dependencies, storage, workers, voice, UI, or computer-control features were added. Existing provider, chat, Sentinel, Tool Fabric, and persistence implementations are unchanged. No Personal Jarvis source code was copied. Capability lookup adds no provider calls or new logging; existing safe chat lifecycle logging remains in place.

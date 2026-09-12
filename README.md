@@ -404,6 +404,26 @@ Default Sentinel policy for direct tools:
 
 In v0.4, `ask` means the API returns `409 tool_approval_required`; no approval UI or approval persistence exists yet. `dangerous` tools return `403 tool_denied`. Tools execute only when Sentinel returns `allow`.
 
+## Provider Capability Contracts
+
+The intelligence registry exposes immutable `ProviderInfo` snapshots containing only `provider_id` and `capabilities`. Registration copies the provider's advertised capabilities into a `frozenset`; re-register the provider to refresh that snapshot. Metadata contains no provider configuration, credentials, endpoint URLs, or health claims.
+
+```python
+from jarvis_core.api.app import create_provider_registry
+from jarvis_core.config import load_settings
+from jarvis_core.intelligence import ProviderCapability
+
+registry = create_provider_registry(load_settings())
+provider = registry.resolve(frozenset({ProviderCapability.TEXT}))
+info = registry.info(provider.provider_id)
+```
+
+`resolve(required_capabilities)` selects the first registered provider whose snapshot contains every required capability. An empty requirement set selects the first registration. Replacing an existing provider preserves its position. Lookup performs no generation, network calls, health probes, or tool execution.
+
+`get(provider_id)`, `resolve_default(provider_id)`, and `info(provider_id)` retain exact-ID lookup with a normalized `unknown_provider` error for missing IDs. A capability query with no matching provider raises `provider_unavailable` with a static safe message and no guessed provider or model.
+
+Chat continues to use its configured default provider. Ollama advertises only `TEXT`; the `TOOL_USE`, `VISION`, `REALTIME`, and `STREAMING` labels reserve names for future adapter interfaces and do not enable those features. See [Provider Capabilities Phase 1](docs/tasks/PROVIDER_CAPABILITIES_PHASE_1.md) for the implementation requirements.
+
 ## Ollama
 
 JARVIS Core starts without calling Ollama. Ollama is contacted only when `POST /v1/chat` routes to the `ollama` provider.

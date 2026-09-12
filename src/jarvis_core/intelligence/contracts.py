@@ -12,6 +12,19 @@ class ProviderCapability(StrEnum):
     """Small capability labels advertised by intelligence providers."""
 
     TEXT = "text"
+    TOOL_USE = "tool_use"
+    VISION = "vision"
+    REALTIME = "realtime"
+    STREAMING = "streaming"
+
+
+class ProviderInfo(BaseModel):
+    """Immutable public adapter metadata, without settings or readiness claims."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    provider_id: str = Field(min_length=1)
+    capabilities: frozenset[ProviderCapability]
 
 
 class ProviderMessageRole(StrEnum):
