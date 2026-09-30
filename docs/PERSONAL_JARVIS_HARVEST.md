@@ -1,6 +1,6 @@
 # Personal Jarvis Architecture Harvest
 
-Status: build-head recommendation
+Status: selective-harvest decision accepted; Provider Capability Contracts Phase 1 merged
 Date: 2026-09-11
 Audience: Ryan, JARVIS Builder, future reviewers
 Source of truth: Project J.A.R.V.I.S. `AGENTS.md`, `docs/MASTER_ARCHITECTURE.md`, and the current repository state
@@ -17,7 +17,7 @@ Project J.A.R.V.I.S. should not become a fork of Personal Jarvis. JARVIS already
 
 The current Project J.A.R.V.I.S. mainline is still a lean modular monolith with FastAPI, Pydantic, SQLite, structured logging, provider contracts, chat routing, tool contracts, Sentinel policy, and local context foundations. [PR #10](https://github.com/friezaforcecoder/project-jarvis/pull/10) merged active-window context v0.7 on 2026-09-11 at `b3a1a3e26e844d57105e5609509b2930ae97e1f1`.
 
-The harvest work remains a separate documentation and future-implementation track. [PR #11](https://github.com/friezaforcecoder/project-jarvis/pull/11) contains only the harvest, ADR, and Phase 1 specification. It does not change the merged v0.7 implementation or introduce runtime dependencies.
+[PR #11](https://github.com/friezaforcecoder/project-jarvis/pull/11) landed the documentation-only harvest, accepted selective-harvest decision, and Phase 1 specification at `7a7a8211f14c8dea34bdd568c9e30a2a4338daa0`. [PR #12](https://github.com/friezaforcecoder/project-jarvis/pull/12) then implemented Provider Capability Contracts Phase 1 and merged at `c436d5c69f1919ca3eb2beb793ee275b05210f01`. The next task is the documentation-only [Credential And Configuration Safety](tasks/CREDENTIAL_CONFIG_SAFETY.md) specification; its runtime work remains deferred until a concrete consumer and implementation scope are defined.
 
 ## Reviewed Personal Jarvis Sources
 
