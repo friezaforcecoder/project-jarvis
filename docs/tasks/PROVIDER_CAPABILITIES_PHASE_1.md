@@ -1,6 +1,6 @@
 # Selective Harvest Phase 1: Provider Capability Contracts
 
-Status: implemented and locally verified on `codex/provider-capabilities-phase-1`; pending review and merge
+Status: implemented, verified, and merged in PR #12 at `c436d5c69f1919ca3eb2beb793ee275b05210f01`
 
 Date: 2026-09-11
 
@@ -173,6 +173,8 @@ Report the implementation branch, commit, PR if created, files changed, exact fi
 Documentation-only review does not fulfill these runtime acceptance criteria. Record Phase 1 as pending until its separate implementation after PR #11 lands and its verification are complete.
 
 ## Implementation Record
+
+Merged via [PR #12](https://github.com/friezaforcecoder/project-jarvis/pull/12) after local validation and passing CI on Ubuntu and Windows. Subsequent work starts on a fresh branch from updated `main`; this implementation branch is complete.
 
 Implemented on a fresh branch from `7a7a8211f14c8dea34bdd568c9e30a2a4338daa0` after PR #11 merged.
 

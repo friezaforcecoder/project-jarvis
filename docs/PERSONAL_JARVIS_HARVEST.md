@@ -1,6 +1,6 @@
 # Personal Jarvis Architecture Harvest
 
-Status: build-head recommendation
+Status: selective-harvest decision accepted; Provider Capability Contracts Phase 1 merged
 Date: 2026-09-11
 Audience: Ryan, JARVIS Builder, future reviewers
 Source of truth: Project J.A.R.V.I.S. `AGENTS.md`, `docs/MASTER_ARCHITECTURE.md`, and the current repository state
@@ -17,7 +17,7 @@ Project J.A.R.V.I.S. should not become a fork of Personal Jarvis. JARVIS already
 
 The current Project J.A.R.V.I.S. mainline is still a lean modular monolith with FastAPI, Pydantic, SQLite, structured logging, provider contracts, chat routing, tool contracts, Sentinel policy, and local context foundations. [PR #10](https://github.com/friezaforcecoder/project-jarvis/pull/10) merged active-window context v0.7 on 2026-09-11 at `b3a1a3e26e844d57105e5609509b2930ae97e1f1`.
 
-The harvest work remains a separate documentation and future-implementation track. [PR #11](https://github.com/friezaforcecoder/project-jarvis/pull/11) contains only the harvest, ADR, and Phase 1 specification. It does not change the merged v0.7 implementation or introduce runtime dependencies.
+[PR #11](https://github.com/friezaforcecoder/project-jarvis/pull/11) landed the documentation-only harvest, accepted selective-harvest decision, and Phase 1 specification at `7a7a8211f14c8dea34bdd568c9e30a2a4338daa0`. [PR #12](https://github.com/friezaforcecoder/project-jarvis/pull/12) then implemented Provider Capability Contracts Phase 1 and merged at `c436d5c69f1919ca3eb2beb793ee275b05210f01`. The next task is the documentation-only [Credential And Configuration Safety](tasks/CREDENTIAL_CONFIG_SAFETY.md) specification; its runtime work remains deferred until a concrete consumer and implementation scope are defined.
 
 ## Reviewed Personal Jarvis Sources
 
@@ -86,7 +86,7 @@ Do not invert this relationship. Personal Jarvis is input material. Project J.A.
 
 | Subsystem | Decision | Reason | Reusable code? | Integration difficulty | Risks | Recommended milestone |
 | --- | --- | --- | --- | --- | --- | --- |
-| Provider architecture | Adapt and port concepts | Personal Jarvis has useful provider protocols, plugin discovery, capability checks, error classification, fallback thinking, and contract tests. JARVIS already has a minimal provider contract and should evolve it without importing vendor decisions into core. | Small contract shapes and test ideas can be reused after license review; adapters should be new. | Medium | Vendor leakage, fallback policy drift, secret exposure, too many dependencies. | Next provider hardening milestone after v0.7. |
+| Provider architecture | Adapt and port concepts | Personal Jarvis has useful provider protocols, plugin discovery, capability checks, error classification, fallback thinking, and contract tests. JARVIS already has a minimal provider contract and should evolve it without importing vendor decisions into core. | Small contract shapes and test ideas can be reused after license review; adapters should be new. | Medium | Vendor leakage, fallback policy drift, secret exposure, too many dependencies. | Provider Capability Contracts Phase 1 completed in PR #12; broader provider hardening remains future scope. |
 | STT, TTS, wake, realtime provider model | Adapt later | The protocol split between STT, TTS, wake word, and full-duplex realtime is strong. Project J.A.R.V.I.S. should keep voice satellites separate from Core and add these only when voice becomes active scope. | Reference and selectively port protocol ideas; avoid copying full speech pipeline. | High | Audio stack complexity, local model downloads, device-specific bugs, latency regressions. | Voice foundation milestone, not before provider capability hardening. |
 | Lean router and brain architecture | Adapt | The "router stays small" discipline matches JARVIS. The exact Personal Jarvis router has grown product-specific tools and should not be copied. JARVIS should keep deterministic routing, narrow tool exposure, and strong regression tests. | Concepts and routing tests are reusable; exact tool list is not. | Medium | Router becoming a dumping ground; LLM deciding policy; false tool triggers. | Intelligence routing hardening. |
 | Capability registry | Adapt | A capability registry is a good way to describe action surfaces by verbs, objects, source, risk, and evidence needs. JARVIS should eventually use this for tool discovery and policy-aware routing. | Possible small model inspiration; implement under JARVIS contracts. | Medium | Regex overreach, language coupling, duplicated policy fields. | Tool Fabric capability milestone. |
@@ -191,9 +191,9 @@ Project J.A.R.V.I.S. should take these lessons, but keep its own Sentinel model:
 ## Recommended Development Plan
 
 1. PR #10 merged on 2026-09-11; the v0.7 merge prerequisite is satisfied.
-2. Land this harvest document, ADR, and Phase 1 specification in the separate docs-only PR #11, rebased onto current `origin/main`.
-3. After PR #11 lands, build provider capability hardening from a fresh branch off updated `main`.
-4. Add credential broker and config mutation safety after provider capability hardening.
+2. PR #11 landed the documentation-only harvest, ADR, and Phase 1 specification at `7a7a8211f14c8dea34bdd568c9e30a2a4338daa0`.
+3. PR #12 landed provider capability hardening at `c436d5c69f1919ca3eb2beb793ee275b05210f01`, completing [Provider Capabilities Phase 1](tasks/PROVIDER_CAPABILITIES_PHASE_1.md).
+4. Define credential broker and configuration mutation boundaries in [Credential And Configuration Safety](tasks/CREDENTIAL_CONFIG_SAFETY.md) on a fresh branch from updated `main`. Runtime work follows when a task identifies a real consumer and resolves the specification's prerequisites.
 5. Add event/provenance records before long-running workers.
 6. Add specialist worker MVP with isolated worktrees and signed observations.
 7. Add critic review as a verifier over worker output.
@@ -201,9 +201,9 @@ Project J.A.R.V.I.S. should take these lessons, but keep its own Sentinel model:
 9. Add installer/setup and desktop HUD later.
 10. Add computer-control fallback only after safer API/native/MCP/DOM/UIA/accessibility layers exist.
 
-## Builder-Ready Implementation Task
+## Current Task
 
-Follow [Provider Capabilities Phase 1](tasks/PROVIDER_CAPABILITIES_PHASE_1.md) for the implementation scope, contracts, tests, and acceptance criteria. Its `ProviderInfo` contains only `provider_id` and `capabilities`. Start on a fresh branch from updated `main` after PR #11 lands.
+Provider capability hardening is merged. Its `ProviderInfo` contains only `provider_id` and `capabilities`. The next task is the documentation-only [Credential And Configuration Safety](tasks/CREDENTIAL_CONFIG_SAFETY.md) specification; that document defines the scope and completion checks without embedding a duplicate implementation task here.
 
 ## Final Recommendation
 
