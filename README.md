@@ -4,7 +4,7 @@ Project J.A.R.V.I.S. is a local-first personal AI operating layer. The goal is n
 
 ## Current Status
 
-This repository contains the early JARVIS Core foundation. It starts a small local FastAPI service, initializes SQLite runtime storage, exposes health, text chat, and deterministic tool execution endpoints, defines typed contracts, routes text intelligence through provider-neutral interfaces, persists simple bounded conversation sessions, sends tool executions through Sentinel authorization, exposes safe local runtime/system-status/active-window tools, and supports narrow deterministic chat-assisted use of those read-only core tools.
+This repository contains the early JARVIS Core foundation. It starts a small local FastAPI service, initializes SQLite runtime storage, exposes health, text chat, and deterministic tool execution endpoints, defines typed contracts, routes text intelligence through provider-neutral interfaces, persists simple bounded conversation sessions, sends tool executions through Sentinel authorization, exposes read-only runtime/system-status/active-window/visible-applications tools, and supports narrow deterministic chat-assisted use of those core tools.
 
 The current proposed and implemented milestones are documented in:
 
@@ -15,6 +15,7 @@ The current proposed and implemented milestones are documented in:
 - `docs/tasks/LOCAL_SYSTEM_CONTEXT_V0.5.md`
 - `docs/tasks/CHAT_TOOL_INVOCATION_V0.6.md`
 - `docs/tasks/ACTIVE_WINDOW_CONTEXT_V0.7.md`
+- [Visible Applications Context v0.8](docs/tasks/VISIBLE_APPLICATIONS_CONTEXT_V0.8.md) - explicit read-only visible desktop application names.
 - [Provider Capability Contracts Phase 1](docs/tasks/PROVIDER_CAPABILITIES_PHASE_1.md) - merged metadata and deterministic selection contracts.
 - [Credential And Configuration Safety](docs/tasks/CREDENTIAL_CONFIG_SAFETY.md) - proposed specification; runtime implementation has not started.
 
@@ -44,7 +45,7 @@ Early milestones should stay intentionally small. The expected local requirement
 - Git
 - Python 3.12+
 
-`psutil` is installed with the Python package and is used only for the v0.5 `system.status` local health snapshot.
+`psutil` is installed with the Python package. It supplies the `system.status` local health snapshot and resolves the names of visible-window owners for `context.visible_applications`; it does not enumerate processes for that tool.
 
 Ollama is optional for manual chat verification. The automated tests do not require Ollama, network access, browser automation, operating-system automation, a real foreground desktop session, or external credentials.
 
@@ -116,7 +117,7 @@ curl http://127.0.0.1:8000/v1/health
 Expected semantic result:
 
 ```json
-{"status":"ok","service":"jarvis-core","version":"0.7.0"}
+{"status":"ok","service":"jarvis-core","version":"0.8.0"}
 ```
 
 ## Verify Chat
@@ -165,7 +166,7 @@ Malformed session IDs are rejected with request validation before provider execu
 
 ## Verify Tool Execution
 
-JARVIS v0.4 adds a direct deterministic Tool Fabric endpoint. JARVIS v0.6 also allows chat to use two narrow, deterministic, read-only core tool routes. Models do not select arbitrary tools.
+JARVIS exposes a direct deterministic Tool Fabric endpoint. In v0.8, chat also supports four narrow, deterministic, read-only core tool routes: runtime information, system status, active-window context, and visible application names. Models do not select arbitrary tools.
 
 Call the harmless built-in runtime-info tool:
 
@@ -191,7 +192,7 @@ Expected semantic result:
     "data": {
       "platform_family": "Windows",
       "python_version": "3.12.x",
-      "jarvis_version": "0.7.0"
+      "jarvis_version": "0.8.0"
     },
     "error": null
   }
@@ -323,15 +324,54 @@ On Windows, `context.active_window` uses standard-library `ctypes` calls to insp
 
 Active-window titles and application labels can reveal sensitive local context. They may be returned to the explicit caller or supplied to the provider for the current turn, but normal structured logs omit the window title, application name, native values, paths, user prompt, provider prompt, provider response, and raw tool payload.
 
-This is not full Windows automation. JARVIS does not launch, close, move, focus, resize, list, or control windows; it does not send keyboard or mouse input; it does not inspect browser URLs, clipboard contents, screenshots, files, processes, installed applications, background windows, or window contents.
+`context.active_window` inspects only the foreground window. It does not enumerate other windows or processes. JARVIS does not launch, close, move, focus, resize, or control windows; it does not send keyboard or mouse input or inspect browser URLs, clipboard contents, screenshots, files, installed applications, or window contents beyond the requested foreground title.
+
+## Verify Visible Applications Context
+
+JARVIS v0.8 adds `context.visible_applications`, a read-only snapshot of application names owning user-visible top-level Windows windows. It uses the existing tool coordinator and Sentinel with `SideEffectLevel.READ` and `ExecutionBoundary.CORE`. The tool accepts an empty argument object; unexpected arguments are rejected.
+
+```bash
+curl -X POST http://127.0.0.1:8000/v1/tools/execute \
+  -H "Content-Type: application/json" \
+  -d '{"tool_name":"context.visible_applications","arguments":{},"correlation_id":"manual-visible-applications-tool"}'
+```
+
+Representative Windows `result.data`:
+
+```json
+{
+  "available": true,
+  "platform_family": "Windows",
+  "applications": ["Code", "notepad"],
+  "reason": null
+}
+```
+
+The typed result has exactly four fields: `available: bool`, `platform_family: str`, `applications: list[str]`, and `reason: "unsupported_platform" | null`. Application labels are executable basenames without `.exe`, not guaranteed product display names. Names are deduplicated and sorted deterministically. Successful collection with no visible applications returns `available: true` and `applications: []`. Inaccessible or disappearing windows/processes are skipped. An unexpected overall collection failure uses the existing safe `tool_execution_failed` error.
+
+On unsupported platforms, execution succeeds with deterministic unavailable data, for example:
+
+```json
+{
+  "available": false,
+  "platform_family": "Linux",
+  "applications": [],
+  "reason": "unsupported_platform"
+}
+```
+
+Windows collection uses standard-library native calls to enumerate top-level windows, filtering hidden, child, tool, cloaked, desktop, and shell windows. Only accepted windows' owner names are looked up through the existing `psutil` dependency. It does not perform a process inventory. Names are deduplicated and sorted case-insensitively, retaining a deterministic spelling. The result excludes window titles, PIDs, executable paths, command lines, background processes, services, usernames, and other process details. No shell, PowerShell, subprocess, new dependency, background monitoring, or application control is involved.
+
+Application names are sensitive, untrusted data. Normal logs omit them and raw tool results are never persisted. Explicit chat requests send the authorized result to the configured provider as data for that turn only; names cannot become instructions or trigger more tools. The ordinary user/assistant exchange still persists, so an assistant answer that mentions application names can appear in conversation history. Tool-result payloads and Core context messages are not stored as conversation messages.
 
 ## Verify Chat Tool Invocation
 
-JARVIS v0.6 added deterministic chat-assisted use of two tools, and v0.7 adds one more explicit active-window route:
+JARVIS v0.8 supports four deterministic chat-assisted tool routes:
 
 - `system.status`
 - `system.runtime_info`
 - `context.active_window`
+- `context.visible_applications`
 
 Each routed tool must be registered as trusted `read` + `core` before chat can execute it. Chat still sends every routed tool through the existing `ToolExecutionCoordinator` and Sentinel path. This is not general model-driven tool calling, and a user cannot ask chat to execute arbitrary registered tools.
 
@@ -377,6 +417,20 @@ Expected semantic result:
 {"message":"The model summarizes the current foreground application/window from active-window tool data.","provider":"ollama","model":"llama3.2","correlation_id":"manual-active-window-chat","session_id":"generated-session-uuid","tools_used":["context.active_window"]}
 ```
 
+Ask for visible desktop applications:
+
+```bash
+curl -X POST http://127.0.0.1:8000/v1/chat \
+  -H "Content-Type: application/json" \
+  -d '{"message":"What apps are currently running?","correlation_id":"manual-visible-applications-chat"}'
+```
+
+Expected semantic result:
+
+```json
+{"message":"The model summarizes the visible application names from the authorized snapshot.","provider":"ollama","model":"llama3.2","correlation_id":"manual-visible-applications-chat","session_id":"generated-session-uuid","tools_used":["context.visible_applications"]}
+```
+
 General knowledge questions remain normal chat:
 
 ```bash
@@ -393,7 +447,11 @@ Expected semantic result:
 
 Supported local/current-state examples include `What is my CPU usage?`, `What's my memory usage?`, `What is my computer uptime?`, and `Does this computer have a battery?`. General definition or explanation prompts such as `What is RAM?`, `What is a CPU?`, `What is uptime?`, and `Explain computer memory.` do not route to tools.
 
-Supported active-window examples include `What app am I using?`, `What window am I in?`, `What's my active window?`, and `Which app is active right now?`. False positives such as `What applications are running?`, `List my open windows.`, `Explain window titles.`, and `Do not check my active window.` do not route to tools.
+Supported active-window examples include `What app am I using?`, `What window am I in?`, `What's my active window?`, and `Which app is active right now?`. They use only `context.active_window`.
+
+Supported visible-application examples include `What apps are currently running?`, `Which applications are open?`, and `Tell me what apps I have open.`. They use only `context.visible_applications`. This v0.8 route supersedes the v0.7 no-tool behavior for running-app questions while preserving separation from foreground-window requests.
+
+Control requests such as `Close all my apps.`, recommendations such as `Which app should I open?`, installed-app inventories, process/service lists, general app/API questions, and suppressors such as `Don't inspect my open apps.` or `Don’t inspect my open apps.` do not route to tools. `List my open windows.`, `Explain window titles.`, and `Do not check my active window.` also remain ordinary chat. Each rejected request returns `tools_used: []` after a successful provider response, executes zero tools, makes no Sentinel call, and adds no trusted tool context.
 
 Default Sentinel policy for direct tools:
 
