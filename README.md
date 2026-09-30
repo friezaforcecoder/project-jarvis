@@ -4,7 +4,7 @@ Project J.A.R.V.I.S. is a local-first personal AI operating layer. The goal is n
 
 ## Current Status
 
-This repository contains the early JARVIS Core foundation. It starts a small local FastAPI service, initializes SQLite runtime storage, exposes health, text chat, and deterministic tool execution endpoints, defines typed contracts, routes text intelligence through provider-neutral interfaces, persists simple bounded conversation sessions, sends tool executions through Sentinel authorization, exposes read-only runtime/system-status/active-window/visible-applications tools, and supports narrow deterministic chat-assisted use of those core tools.
+This repository contains the early JARVIS Core foundation. It starts a small local FastAPI service, initializes SQLite runtime storage, exposes health, text chat, and deterministic tool execution endpoints, defines typed contracts, routes text intelligence through provider-neutral interfaces, persists simple bounded conversation sessions, sends tool executions through Sentinel authorization, durably audits tool execution metadata without payloads, exposes read-only runtime/system-status/active-window/visible-applications tools, and supports narrow deterministic chat-assisted use of those core tools.
 
 The current proposed and implemented milestones are documented in:
 
@@ -16,6 +16,7 @@ The current proposed and implemented milestones are documented in:
 - `docs/tasks/CHAT_TOOL_INVOCATION_V0.6.md`
 - `docs/tasks/ACTIVE_WINDOW_CONTEXT_V0.7.md`
 - [Visible Applications Context v0.8](docs/tasks/VISIBLE_APPLICATIONS_CONTEXT_V0.8.md) - explicit read-only visible desktop application names.
+- [Tool Execution Audit Trail v0.9](docs/tasks/TOOL_AUDIT_TRAIL_V0.9.md) - durable, payload-free Tool Fabric execution evidence.
 - [Provider Capability Contracts Phase 1](docs/tasks/PROVIDER_CAPABILITIES_PHASE_1.md) - merged metadata and deterministic selection contracts.
 - [Credential And Configuration Safety](docs/tasks/CREDENTIAL_CONFIG_SAFETY.md) - proposed specification; runtime implementation has not started.
 
@@ -117,7 +118,7 @@ curl http://127.0.0.1:8000/v1/health
 Expected semantic result:
 
 ```json
-{"status":"ok","service":"jarvis-core","version":"0.8.0"}
+{"status":"ok","service":"jarvis-core","version":"0.9.0"}
 ```
 
 ## Verify Chat
@@ -192,7 +193,7 @@ Expected semantic result:
     "data": {
       "platform_family": "Windows",
       "python_version": "3.12.x",
-      "jarvis_version": "0.8.0"
+      "jarvis_version": "0.9.0"
     },
     "error": null
   }
@@ -200,6 +201,50 @@ Expected semantic result:
 ```
 
 The exact platform and Python values depend on the machine running JARVIS. The tool returns only broad safe runtime metadata: platform family, Python version, and JARVIS version. It does not return username, hostname, IP addresses, environment variables, process lists, file contents, serial numbers, secrets, or local filesystem paths.
+
+## Verify Tool Execution Audit Trail
+
+JARVIS v0.9 records one durable audit row for every request that enters `ToolExecutionCoordinator`, including direct API and deterministic chat-routed tool requests. The initial `started` row is written before tool lookup, argument validation, Sentinel authorization, or execution. A terminal outcome is then written atomically.
+
+Execute a harmless tool with a known correlation ID:
+
+```bash
+curl -X POST http://127.0.0.1:8000/v1/tools/execute \
+  -H "Content-Type: application/json" \
+  -d '{"tool_name":"system.runtime_info","arguments":{},"correlation_id":"manual-audit-1"}'
+```
+
+Read only that correlation's audit records:
+
+```bash
+curl http://127.0.0.1:8000/v1/audit/tool-executions/manual-audit-1
+```
+
+Expected semantic result:
+
+```json
+{
+  "correlation_id": "manual-audit-1",
+  "records": [
+    {
+      "audit_id": "generated-audit-uuid",
+      "correlation_id": "manual-audit-1",
+      "tool_name": "system.runtime_info",
+      "side_effect_level": "read",
+      "execution_boundary": "core",
+      "sentinel_decision": "allow",
+      "outcome": "succeeded",
+      "error_code": null,
+      "started_at": "timezone-aware-utc-timestamp",
+      "completed_at": "timezone-aware-utc-timestamp"
+    }
+  ]
+}
+```
+
+Unknown correlations return the same envelope with an empty `records` list. Records are ordered by start time and audit ID. The endpoint does not provide list-all, mutation, or deletion operations.
+
+Audit rows deliberately exclude tool arguments and results, user and assistant messages, prompts, Sentinel reasons, application and window names, native context, local paths, credentials, raw exceptions, and arbitrary metadata. Only stable identifiers, trusted tool classification, the Sentinel action, normalized outcome/error code, and timestamps are stored. If the initial audit write fails, execution stops before Sentinel or the tool runs. If completion cannot be recorded after a tool runs, JARVIS returns a safe internal error and leaves the durable row visibly `started` rather than claiming an unaudited success.
 
 ## Verify Local System Status
 

@@ -10,6 +10,7 @@ from jarvis_core.config import Settings
 
 _BOOTSTRAP_MIGRATION = "bootstrap-v0.1"
 _WORKING_MEMORY_MIGRATION = "working-memory-v0.3"
+_TOOL_AUDIT_MIGRATION = "tool-audit-v0.9"
 
 
 def _ensure_migration_table(connection: sqlite3.Connection) -> None:
@@ -62,9 +63,51 @@ def _apply_working_memory_migration(connection: sqlite3.Connection) -> None:
     )
 
 
+def _apply_tool_audit_migration(connection: sqlite3.Connection) -> None:
+    connection.execute(
+        """
+        CREATE TABLE IF NOT EXISTS tool_execution_audits (
+            audit_id TEXT PRIMARY KEY NOT NULL CHECK (length(audit_id) > 0),
+            correlation_id TEXT NOT NULL CHECK (length(correlation_id) > 0),
+            tool_name TEXT NOT NULL CHECK (length(tool_name) > 0),
+            side_effect_level TEXT CHECK (side_effect_level IN ('none', 'read', 'write', 'dangerous')),
+            execution_boundary TEXT CHECK (execution_boundary IN ('core', 'user_space', 'external_service')),
+            sentinel_decision TEXT CHECK (sentinel_decision IN ('allow', 'ask', 'deny')),
+            outcome TEXT NOT NULL CHECK (outcome IN (
+                'started', 'tool_not_found', 'invalid_arguments', 'approval_required',
+                'denied', 'authorization_failed', 'succeeded', 'tool_failed',
+                'internal_failure'
+            )),
+            error_code TEXT CHECK (error_code IN (
+                'tool_duplicate', 'tool_not_found', 'tool_invalid_arguments',
+                'tool_approval_required', 'tool_denied', 'tool_execution_failed',
+                'sentinel_authorization_failed', 'tool_internal_error'
+            )),
+            started_at TEXT NOT NULL,
+            completed_at TEXT,
+            CHECK (
+                (outcome = 'started' AND completed_at IS NULL AND error_code IS NULL)
+                OR (outcome != 'started' AND completed_at IS NOT NULL)
+            ),
+            CHECK (outcome != 'succeeded' OR error_code IS NULL),
+            CHECK (outcome IN ('started', 'succeeded') OR error_code IS NOT NULL),
+            CHECK (audit_id != correlation_id),
+            CHECK (completed_at IS NULL OR completed_at >= started_at)
+        )
+        """
+    )
+    connection.execute(
+        """
+        CREATE INDEX IF NOT EXISTS idx_tool_execution_audits_correlation_started_audit
+        ON tool_execution_audits (correlation_id, started_at, audit_id)
+        """
+    )
+
+
 _MIGRATIONS: tuple[tuple[str, Callable[[sqlite3.Connection], None]], ...] = (
     (_BOOTSTRAP_MIGRATION, _apply_bootstrap_migration),
     (_WORKING_MEMORY_MIGRATION, _apply_working_memory_migration),
+    (_TOOL_AUDIT_MIGRATION, _apply_tool_audit_migration),
 )
 
 

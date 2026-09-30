@@ -46,6 +46,7 @@ from jarvis_core.tools import (
     ToolResult,
 )
 from jarvis_core.tools.router import ToolExecutionCoordinator
+from tests.tool_audit_fakes import RecordingToolAuditRepository
 
 
 class NoArgs(BaseModel):
@@ -200,7 +201,12 @@ def build_service(
         provider_registry(provider),
         SQLiteConversationRepository(settings.database_path),
         tool_registry=registry,
-        tool_execution_coordinator=coordinator or ToolExecutionCoordinator(registry, sentinel),
+        tool_execution_coordinator=coordinator
+        or ToolExecutionCoordinator(
+            registry,
+            sentinel,
+            RecordingToolAuditRepository(),
+        ),
         chat_tool_router=router,  # type: ignore[arg-type]
     )
 
@@ -539,7 +545,7 @@ def test_status_chat_executes_once_and_sends_trusted_context(tmp_path) -> None:
 
 def test_runtime_chat_executes_once_and_returns_tools_used(tmp_path) -> None:
     settings = Settings(database_path=tmp_path / "jarvis.sqlite3", intelligence_provider="fake")
-    provider = FakeProvider(output="JARVIS is running 0.8.0.")
+    provider = FakeProvider(output="JARVIS is running 0.9.0.")
     runtime_tool = FakeTool(
         name=RUNTIME_INFO_TOOL,
         result=ToolResult(
@@ -547,7 +553,7 @@ def test_runtime_chat_executes_once_and_returns_tools_used(tmp_path) -> None:
             data={
                 "platform_family": "Windows",
                 "python_version": "3.12.0",
-                "jarvis_version": "0.8.0",
+                "jarvis_version": "0.9.0",
             },
         ),
     )
