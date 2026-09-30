@@ -21,6 +21,14 @@ from jarvis_core.context.system_status import (
     collect_system_status,
     collect_system_status_async,
 )
+from jarvis_core.context.visible_applications import (
+    VisibleApplicationsCollectionError,
+    VisibleApplicationsCollector,
+    VisibleApplicationsContext,
+    VisibleApplicationsUnavailableReason,
+    collect_visible_applications,
+    collect_visible_applications_async,
+)
 
 __all__ = [
     "ActiveWindowCollectionError",
@@ -35,9 +43,15 @@ __all__ = [
     "SystemRuntimeStatus",
     "SystemStatusCollectionError",
     "WindowsForegroundWindowSnapshot",
+    "VisibleApplicationsCollectionError",
+    "VisibleApplicationsCollector",
+    "VisibleApplicationsContext",
+    "VisibleApplicationsUnavailableReason",
     "active_window_context_from_windows_snapshot",
     "collect_active_window",
     "collect_active_window_async",
     "collect_system_status",
     "collect_system_status_async",
+    "collect_visible_applications",
+    "collect_visible_applications_async",
 ]

@@ -10,8 +10,10 @@ from jarvis_core import __version__
 from jarvis_core.context import (
     ActiveWindowCollector,
     SystemStatusCollector,
+    VisibleApplicationsCollector,
     collect_active_window_async,
     collect_system_status_async,
+    collect_visible_applications_async,
 )
 from jarvis_core.tools.contracts import (
     ExecutionBoundary,
@@ -37,6 +39,12 @@ class SystemStatusArguments(BaseModel):
 
 class ActiveWindowArguments(BaseModel):
     """Arguments for context.active_window."""
+
+    model_config = ConfigDict(extra="forbid")
+
+
+class VisibleApplicationsArguments(BaseModel):
+    """No arguments are accepted for visible desktop application context."""
 
     model_config = ConfigDict(extra="forbid")
 
@@ -149,6 +157,41 @@ class ActiveWindowTool:
         return ToolResult(success=True, data=active_window.model_dump(mode="json"))
 
 
+class VisibleApplicationsTool:
+    """Return only names of applications owning visible desktop windows."""
+
+    def __init__(self, collector: VisibleApplicationsCollector | None = None) -> None:
+        self._collector = collector
+
+    @property
+    def descriptor(self) -> ToolDescriptor:
+        """Return the read-only Core tool contract."""
+
+        return ToolDescriptor(
+            name="context.visible_applications",
+            description="Return application names from visible desktop windows only.",
+            side_effect_level=SideEffectLevel.READ,
+            execution_boundary=ExecutionBoundary.CORE,
+            input_schema=VisibleApplicationsArguments.model_json_schema(),
+        )
+
+    @property
+    def argument_model(self) -> type[BaseModel]:
+        """Return the strict no-argument contract."""
+
+        return VisibleApplicationsArguments
+
+    async def execute(
+        self,
+        arguments: BaseModel,
+        context: ToolExecutionContext,
+    ) -> ToolResult:
+        """Collect one snapshot after coordinator validation and authorization."""
+
+        applications = await collect_visible_applications_async(self._collector)
+        return ToolResult(success=True, data=applications.model_dump(mode="json"))
+
+
 def create_builtin_tool_registry() -> ToolRegistry:
     """Build the default registry of harmless built-in tools."""
 
@@ -156,4 +199,5 @@ def create_builtin_tool_registry() -> ToolRegistry:
     registry.register(RuntimeInfoTool())
     registry.register(SystemStatusTool())
     registry.register(ActiveWindowTool())
+    registry.register(VisibleApplicationsTool())
     return registry

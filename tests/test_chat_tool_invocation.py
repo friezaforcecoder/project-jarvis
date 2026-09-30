@@ -24,6 +24,7 @@ from jarvis_core.intelligence.chat_tools import (
     ACTIVE_WINDOW_TOOL,
     RUNTIME_INFO_TOOL,
     SYSTEM_STATUS_TOOL,
+    VISIBLE_APPLICATIONS_TOOL,
     TRUSTED_TOOL_CONTEXT_PREFIX,
     ChatToolIntent,
     ChatToolRoute,
@@ -307,11 +308,6 @@ def test_chat_tool_router_routes_supported_local_requests(message: str, tool_nam
         "How do active windows work?",
         "Tell me about Microsoft Windows.",
         "What apps are installed?",
-        "What applications are running?",
-        "What apps are currently running?",
-        "What applications are currently running?",
-        "Which applications are currently running?",
-        "What apps are running right now?",
         "List my open windows.",
         "What programs are running in the background?",
         "Explain window titles.",
@@ -343,10 +339,6 @@ def test_chat_tool_router_leaves_false_positives_as_normal_chat(message: str) ->
 @pytest.mark.parametrize(
     "message",
     [
-        "What apps are currently running?",
-        "What applications are currently running?",
-        "Which applications are currently running?",
-        "What apps are running right now?",
         "Which of my apps is active, and what version of JARVIS am I running?",
         "Close my active window.",
         "Move my current window to the left.",
@@ -458,9 +450,9 @@ def test_chat_tool_router_chooses_no_route_for_ambiguous_multiple_intents(
     assert ChatToolRouter().route(message) is None
 
 
-def test_supported_chat_tool_names_are_exactly_the_three_v0_7_routes() -> None:
+def test_supported_chat_tool_names_are_exactly_the_four_v0_8_routes() -> None:
     assert supported_chat_tool_names() == frozenset(
-        {SYSTEM_STATUS_TOOL, RUNTIME_INFO_TOOL, ACTIVE_WINDOW_TOOL}
+        {SYSTEM_STATUS_TOOL, RUNTIME_INFO_TOOL, ACTIVE_WINDOW_TOOL, VISIBLE_APPLICATIONS_TOOL}
     )
 
 
@@ -547,7 +539,7 @@ def test_status_chat_executes_once_and_sends_trusted_context(tmp_path) -> None:
 
 def test_runtime_chat_executes_once_and_returns_tools_used(tmp_path) -> None:
     settings = Settings(database_path=tmp_path / "jarvis.sqlite3", intelligence_provider="fake")
-    provider = FakeProvider(output="JARVIS is running 0.7.0.")
+    provider = FakeProvider(output="JARVIS is running 0.8.0.")
     runtime_tool = FakeTool(
         name=RUNTIME_INFO_TOOL,
         result=ToolResult(
@@ -555,7 +547,7 @@ def test_runtime_chat_executes_once_and_returns_tools_used(tmp_path) -> None:
             data={
                 "platform_family": "Windows",
                 "python_version": "3.12.0",
-                "jarvis_version": "0.7.0",
+                "jarvis_version": "0.8.0",
             },
         ),
     )
