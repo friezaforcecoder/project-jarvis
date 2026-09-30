@@ -15,6 +15,8 @@ The current proposed and implemented milestones are documented in:
 - `docs/tasks/LOCAL_SYSTEM_CONTEXT_V0.5.md`
 - `docs/tasks/CHAT_TOOL_INVOCATION_V0.6.md`
 - `docs/tasks/ACTIVE_WINDOW_CONTEXT_V0.7.md`
+- [Provider Capability Contracts Phase 1](docs/tasks/PROVIDER_CAPABILITIES_PHASE_1.md) - merged metadata and deterministic selection contracts.
+- [Credential And Configuration Safety](docs/tasks/CREDENTIAL_CONFIG_SAFETY.md) - proposed specification; runtime implementation has not started.
 
 ## Source Of Truth
 

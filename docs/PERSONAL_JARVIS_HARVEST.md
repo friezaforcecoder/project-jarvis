@@ -191,9 +191,9 @@ Project J.A.R.V.I.S. should take these lessons, but keep its own Sentinel model:
 ## Recommended Development Plan
 
 1. PR #10 merged on 2026-09-11; the v0.7 merge prerequisite is satisfied.
-2. Land this harvest document, ADR, and Phase 1 specification in the separate docs-only PR #11, rebased onto current `origin/main`.
-3. After PR #11 lands, build provider capability hardening from a fresh branch off updated `main`.
-4. Add credential broker and config mutation safety after provider capability hardening.
+2. PR #11 landed the documentation-only harvest, ADR, and Phase 1 specification at `7a7a8211f14c8dea34bdd568c9e30a2a4338daa0`.
+3. PR #12 landed provider capability hardening at `c436d5c69f1919ca3eb2beb793ee275b05210f01`, completing [Provider Capabilities Phase 1](tasks/PROVIDER_CAPABILITIES_PHASE_1.md).
+4. Define credential broker and configuration mutation boundaries in [Credential And Configuration Safety](tasks/CREDENTIAL_CONFIG_SAFETY.md) on a fresh branch from updated `main`. Runtime work follows when a task identifies a real consumer and resolves the specification's prerequisites.
 5. Add event/provenance records before long-running workers.
 6. Add specialist worker MVP with isolated worktrees and signed observations.
 7. Add critic review as a verifier over worker output.
@@ -201,9 +201,9 @@ Project J.A.R.V.I.S. should take these lessons, but keep its own Sentinel model:
 9. Add installer/setup and desktop HUD later.
 10. Add computer-control fallback only after safer API/native/MCP/DOM/UIA/accessibility layers exist.
 
-## Builder-Ready Implementation Task
+## Current Task
 
-Follow [Provider Capabilities Phase 1](tasks/PROVIDER_CAPABILITIES_PHASE_1.md) for the implementation scope, contracts, tests, and acceptance criteria. Its `ProviderInfo` contains only `provider_id` and `capabilities`. Start on a fresh branch from updated `main` after PR #11 lands.
+Provider capability hardening is merged. Its `ProviderInfo` contains only `provider_id` and `capabilities`. The next task is the documentation-only [Credential And Configuration Safety](tasks/CREDENTIAL_CONFIG_SAFETY.md) specification; that document defines the scope and completion checks without embedding a duplicate implementation task here.
 
 ## Final Recommendation
 
