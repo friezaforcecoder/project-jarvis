@@ -3,5 +3,11 @@
 from jarvis_core.persistence.conversations import SQLiteConversationRepository
 from jarvis_core.persistence.sqlite import initialize_sqlite
 from jarvis_core.persistence.tool_audit import SQLiteToolAuditRepository
+from jarvis_core.persistence.tool_approvals import SQLiteToolApprovalRepository
 
-__all__ = ["SQLiteConversationRepository", "SQLiteToolAuditRepository", "initialize_sqlite"]
+__all__ = [
+    "SQLiteConversationRepository",
+    "SQLiteToolApprovalRepository",
+    "SQLiteToolAuditRepository",
+    "initialize_sqlite",
+]

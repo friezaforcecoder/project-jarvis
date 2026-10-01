@@ -1,6 +1,7 @@
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import UTC, datetime, timedelta
+from uuid import uuid4
 
 import pytest
 from pydantic import ValidationError
@@ -14,7 +15,14 @@ from jarvis_core.intelligence import (
     ProviderResponse,
 )
 from jarvis_core.sentinel import AuthorizationAction, AuthorizationDecision, AuthorizationRequest
-from jarvis_core.tools import ExecutionBoundary, SideEffectLevel, ToolDescriptor, ToolRequest, ToolResult
+from jarvis_core.tools import (
+    ExecutionBoundary,
+    SideEffectLevel,
+    ToolApprovalChallenge,
+    ToolDescriptor,
+    ToolRequest,
+    ToolResult,
+)
 
 
 def test_event_contract_requires_timezone_aware_timestamp() -> None:
@@ -90,6 +98,42 @@ def test_sentinel_contract_returns_action_and_reason() -> None:
     assert decision.reason
 
 
+def test_tool_approval_request_and_challenge_contracts_are_strict() -> None:
+    approval_id = uuid4()
+    expires_at = datetime.now(UTC) + timedelta(minutes=5)
+    request = ToolRequest(
+        tool_name="test.write",
+        arguments={},
+        approval_id=approval_id,
+    )
+    challenge = ToolApprovalChallenge(
+        approval_id=approval_id,
+        expires_at=expires_at,
+    )
+
+    assert request.approval_id == approval_id
+    assert challenge.model_dump() == {
+        "approval_id": approval_id,
+        "expires_at": expires_at,
+    }
+
+    with pytest.raises(ValidationError):
+        ToolApprovalChallenge(
+            approval_id=approval_id,
+            expires_at=expires_at,
+            surprise=True,
+        )
+
+    with pytest.raises(ValidationError):
+        ToolApprovalChallenge(
+            approval_id=approval_id,
+            expires_at=datetime(2026, 1, 1),
+        )
+
+    with pytest.raises(ValidationError):
+        challenge.expires_at = expires_at + timedelta(minutes=1)
+
+
 def test_architectural_contracts_reject_unknown_fields() -> None:
     with pytest.raises(ValidationError):
         JarvisEvent(event_type="core.started", source="tests", surprise=True)  # type: ignore[call-arg]
@@ -102,3 +146,6 @@ def test_architectural_contracts_reject_unknown_fields() -> None:
 
     with pytest.raises(ValidationError):
         ProviderMessage(role=ProviderMessageRole.USER, content="hello", surprise=True)  # type: ignore[call-arg]
+
+    with pytest.raises(ValidationError):
+        ToolRequest(tool_name="test.write", arguments={}, surprise=True)  # type: ignore[call-arg]

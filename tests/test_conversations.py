@@ -67,6 +67,7 @@ def test_initialize_sqlite_creates_fresh_working_memory_schema(tmp_path) -> None
         "bootstrap-v0.1",
         "working-memory-v0.3",
         "tool-audit-v0.9",
+        "sentinel-approval-v0.10",
     }
     assert {"conversation_sessions", "conversation_messages"}.issubset(
         table_names(database_path)
@@ -94,6 +95,7 @@ def test_initialize_sqlite_upgrades_existing_v2_bootstrap_schema_in_place(tmp_pa
         "bootstrap-v0.1",
         "working-memory-v0.3",
         "tool-audit-v0.9",
+        "sentinel-approval-v0.10",
     }
     with sqlite3.connect(database_path) as connection:
         existing_value = connection.execute(

@@ -11,6 +11,7 @@ from jarvis_core.config import Settings
 _BOOTSTRAP_MIGRATION = "bootstrap-v0.1"
 _WORKING_MEMORY_MIGRATION = "working-memory-v0.3"
 _TOOL_AUDIT_MIGRATION = "tool-audit-v0.9"
+_SENTINEL_APPROVAL_MIGRATION = "sentinel-approval-v0.10"
 
 
 def _ensure_migration_table(connection: sqlite3.Connection) -> None:
@@ -104,10 +105,116 @@ def _apply_tool_audit_migration(connection: sqlite3.Connection) -> None:
     )
 
 
+def _apply_sentinel_approval_migration(connection: sqlite3.Connection) -> None:
+    connection.execute("DROP INDEX IF EXISTS idx_tool_execution_audits_correlation_started_audit")
+    connection.execute(
+        "ALTER TABLE tool_execution_audits RENAME TO tool_execution_audits_v0_9"
+    )
+    connection.execute(
+        """
+        CREATE TABLE tool_execution_audits (
+            audit_id TEXT PRIMARY KEY NOT NULL CHECK (length(audit_id) > 0),
+            correlation_id TEXT NOT NULL CHECK (length(correlation_id) > 0),
+            tool_name TEXT NOT NULL CHECK (length(tool_name) > 0),
+            side_effect_level TEXT CHECK (side_effect_level IN ('none', 'read', 'write', 'dangerous')),
+            execution_boundary TEXT CHECK (execution_boundary IN ('core', 'user_space', 'external_service')),
+            sentinel_decision TEXT CHECK (sentinel_decision IN ('allow', 'ask', 'deny')),
+            outcome TEXT NOT NULL CHECK (outcome IN (
+                'started', 'tool_not_found', 'invalid_arguments', 'approval_required',
+                'approval_expired', 'approval_invalid', 'denied',
+                'authorization_failed', 'succeeded', 'tool_failed',
+                'internal_failure'
+            )),
+            error_code TEXT CHECK (error_code IN (
+                'tool_duplicate', 'tool_not_found', 'tool_invalid_arguments',
+                'tool_approval_required', 'tool_approval_expired',
+                'tool_approval_invalid', 'tool_denied', 'tool_execution_failed',
+                'sentinel_authorization_failed', 'tool_internal_error'
+            )),
+            started_at TEXT NOT NULL,
+            completed_at TEXT,
+            CHECK (
+                (outcome = 'started' AND completed_at IS NULL AND error_code IS NULL)
+                OR (outcome != 'started' AND completed_at IS NOT NULL)
+            ),
+            CHECK (outcome != 'succeeded' OR error_code IS NULL),
+            CHECK (outcome IN ('started', 'succeeded') OR error_code IS NOT NULL),
+            CHECK (audit_id != correlation_id),
+            CHECK (completed_at IS NULL OR completed_at >= started_at)
+        )
+        """
+    )
+    connection.execute(
+        """
+        INSERT INTO tool_execution_audits (
+            audit_id, correlation_id, tool_name, side_effect_level,
+            execution_boundary, sentinel_decision, outcome, error_code,
+            started_at, completed_at
+        )
+        SELECT
+            audit_id, correlation_id, tool_name, side_effect_level,
+            execution_boundary, sentinel_decision, outcome, error_code,
+            started_at, completed_at
+        FROM tool_execution_audits_v0_9
+        """
+    )
+    connection.execute("DROP TABLE tool_execution_audits_v0_9")
+    connection.execute(
+        """
+        CREATE INDEX idx_tool_execution_audits_correlation_started_audit
+        ON tool_execution_audits (correlation_id, started_at, audit_id)
+        """
+    )
+    connection.execute(
+        """
+        CREATE TABLE IF NOT EXISTS tool_approvals (
+            approval_id TEXT PRIMARY KEY NOT NULL,
+            request_binding TEXT NOT NULL,
+            status TEXT NOT NULL,
+            created_at TEXT NOT NULL,
+            expires_at TEXT NOT NULL,
+            approved_at TEXT,
+            consumed_at TEXT,
+            CHECK (length(approval_id) > 0),
+            CHECK (
+                length(request_binding) = 64
+                AND request_binding NOT GLOB '*[^0-9a-f]*'
+            ),
+            CHECK (status IN ('pending', 'approved', 'consumed')),
+            CHECK (expires_at > created_at),
+            CHECK (
+                status != 'pending'
+                OR (approved_at IS NULL AND consumed_at IS NULL)
+            ),
+            CHECK (
+                status != 'approved'
+                OR (
+                    approved_at IS NOT NULL
+                    AND consumed_at IS NULL
+                    AND approved_at >= created_at
+                    AND approved_at <= expires_at
+                )
+            ),
+            CHECK (
+                status != 'consumed'
+                OR (
+                    approved_at IS NOT NULL
+                    AND consumed_at IS NOT NULL
+                    AND approved_at >= created_at
+                    AND consumed_at >= approved_at
+                    AND consumed_at <= expires_at
+                )
+            )
+        )
+        """
+    )
+
+
 _MIGRATIONS: tuple[tuple[str, Callable[[sqlite3.Connection], None]], ...] = (
     (_BOOTSTRAP_MIGRATION, _apply_bootstrap_migration),
     (_WORKING_MEMORY_MIGRATION, _apply_working_memory_migration),
     (_TOOL_AUDIT_MIGRATION, _apply_tool_audit_migration),
+    (_SENTINEL_APPROVAL_MIGRATION, _apply_sentinel_approval_migration),
 )
 
 

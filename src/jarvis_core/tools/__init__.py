@@ -3,6 +3,7 @@
 from jarvis_core.tools.contracts import (
     ExecutionBoundary,
     SideEffectLevel,
+    ToolApprovalChallenge,
     Tool,
     ToolDescriptor,
     ToolExecutionContext,
@@ -16,6 +17,7 @@ __all__ = [
     "ExecutionBoundary",
     "RegisteredTool",
     "SideEffectLevel",
+    "ToolApprovalChallenge",
     "Tool",
     "ToolDescriptor",
     "ToolErrorCode",

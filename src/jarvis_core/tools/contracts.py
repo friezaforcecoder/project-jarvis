@@ -2,10 +2,12 @@
 
 from __future__ import annotations
 
+from datetime import UTC, datetime
 from enum import StrEnum
 from typing import Any, Protocol
+from uuid import UUID
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 
 class SideEffectLevel(StrEnum):
@@ -45,6 +47,23 @@ class ToolRequest(BaseModel):
     tool_name: str = Field(min_length=1)
     arguments: dict[str, Any] = Field(default_factory=dict)
     correlation_id: str | None = Field(default=None, min_length=1)
+    approval_id: UUID | None = None
+
+
+class ToolApprovalChallenge(BaseModel):
+    """Direct-client approval capability returned for a Sentinel ASK decision."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    approval_id: UUID
+    expires_at: datetime
+
+    @field_validator("expires_at")
+    @classmethod
+    def normalize_expiry(cls, value: datetime) -> datetime:
+        if value.tzinfo is None or value.utcoffset() is None:
+            raise ValueError("approval expiry must be timezone-aware")
+        return value.astimezone(UTC)
 
 
 class ToolExecutionContext(BaseModel):

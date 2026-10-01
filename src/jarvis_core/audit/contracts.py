@@ -21,6 +21,8 @@ class ToolAuditOutcome(StrEnum):
     TOOL_NOT_FOUND = "tool_not_found"
     INVALID_ARGUMENTS = "invalid_arguments"
     APPROVAL_REQUIRED = "approval_required"
+    APPROVAL_EXPIRED = "approval_expired"
+    APPROVAL_INVALID = "approval_invalid"
     DENIED = "denied"
     AUTHORIZATION_FAILED = "authorization_failed"
     SUCCEEDED = "succeeded"

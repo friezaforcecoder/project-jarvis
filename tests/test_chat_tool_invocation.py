@@ -545,7 +545,7 @@ def test_status_chat_executes_once_and_sends_trusted_context(tmp_path) -> None:
 
 def test_runtime_chat_executes_once_and_returns_tools_used(tmp_path) -> None:
     settings = Settings(database_path=tmp_path / "jarvis.sqlite3", intelligence_provider="fake")
-    provider = FakeProvider(output="JARVIS is running 0.9.0.")
+    provider = FakeProvider(output="JARVIS is running 0.10.0.")
     runtime_tool = FakeTool(
         name=RUNTIME_INFO_TOOL,
         result=ToolResult(
@@ -553,7 +553,7 @@ def test_runtime_chat_executes_once_and_returns_tools_used(tmp_path) -> None:
             data={
                 "platform_family": "Windows",
                 "python_version": "3.12.0",
-                "jarvis_version": "0.9.0",
+                "jarvis_version": "0.10.0",
             },
         ),
     )
@@ -1026,6 +1026,12 @@ def test_sentinel_non_allowing_paths_are_safe_and_persist_nothing(
     assert tool.executions == 0
     assert provider.requests == []
     assert read_database_messages(settings.database_path) == []
+    with sqlite3.connect(settings.database_path) as connection:
+        approval_count = connection.execute(
+            "SELECT count(*) FROM tool_approvals"
+        ).fetchone()[0]
+    assert approval_count == 0
+    assert "approval" not in response.json()
 
 
 def test_tool_failure_in_chat_is_normalized_and_persists_nothing(tmp_path) -> None:
