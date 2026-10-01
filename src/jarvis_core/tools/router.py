@@ -4,11 +4,17 @@ from __future__ import annotations
 
 import logging
 from dataclasses import dataclass
+from datetime import UTC, datetime
 from time import perf_counter
 from uuid import uuid4
 
 from pydantic import BaseModel, ValidationError
 
+from jarvis_core.audit import (
+    ToolAuditOutcome,
+    ToolAuditRecord,
+    ToolAuditRepository,
+)
 from jarvis_core.sentinel.contracts import (
     AuthorizationAction,
     AuthorizationDecision,
@@ -41,17 +47,36 @@ class ToolExecutionOutcome:
 class ToolExecutionCoordinator:
     """Coordinate registry lookup, validation, Sentinel, and tool execution."""
 
-    def __init__(self, tool_registry: ToolRegistry, sentinel: Sentinel) -> None:
+    def __init__(
+        self,
+        tool_registry: ToolRegistry,
+        sentinel: Sentinel,
+        audit_repository: ToolAuditRepository,
+    ) -> None:
         self._tool_registry = tool_registry
         self._sentinel = sentinel
+        self._audit_repository = audit_repository
 
     async def execute(self, request: ToolRequest) -> ToolExecutionOutcome:
         """Execute one tool request through the safe Tool Fabric path."""
 
         correlation_id = request.correlation_id or str(uuid4())
+        audit_id = str(uuid4())
+        while audit_id == correlation_id:
+            audit_id = str(uuid4())
+        audit_started_at = datetime.now(UTC)
         started_at = perf_counter()
         descriptor: ToolDescriptor | None = None
         decision: AuthorizationDecision | None = None
+
+        self._create_audit(
+            ToolAuditRecord(
+                audit_id=audit_id,
+                correlation_id=correlation_id,
+                tool_name=request.tool_name,
+                started_at=audit_started_at,
+            )
+        )
         logger.info(
             "tool_request_started",
             extra={
@@ -108,43 +133,156 @@ class ToolExecutionCoordinator:
                 tool_name=descriptor.name,
                 correlation_id=correlation_id,
             )
-            elapsed_ms = round((perf_counter() - started_at) * 1000, 3)
-            logger.info(
-                "tool_request_succeeded",
-                extra={
-                    "correlation_id": correlation_id,
-                    "tool_name": descriptor.name,
-                    "sentinel_decision": decision.action.value,
-                    "side_effect_level": descriptor.side_effect_level.value,
-                    "execution_boundary": descriptor.execution_boundary.value,
-                    "elapsed_ms": elapsed_ms,
-                    "success": result.success,
-                },
-            )
-            return ToolExecutionOutcome(
-                tool_name=descriptor.name,
-                correlation_id=correlation_id,
-                sentinel_decision=decision,
-                result=result,
-            )
         except ToolExecutionError as exc:
             if exc.correlation_id is None:
                 exc.correlation_id = correlation_id
-            elapsed_ms = round((perf_counter() - started_at) * 1000, 3)
-            extra: dict[str, object] = {
-                "correlation_id": exc.correlation_id,
-                "tool_name": exc.tool_name or request.tool_name,
-                "elapsed_ms": elapsed_ms,
-                "error_code": exc.code.value,
-                **exc.safe_metadata,
-            }
-            if descriptor is not None:
-                extra["side_effect_level"] = descriptor.side_effect_level.value
-                extra["execution_boundary"] = descriptor.execution_boundary.value
-            if decision is not None:
-                extra["sentinel_decision"] = decision.action.value
-            logger.warning("tool_request_failed", extra=extra)
+            self._complete_audit(
+                audit_id=audit_id,
+                correlation_id=correlation_id,
+                tool_name=request.tool_name,
+                started_at=audit_started_at,
+                descriptor=descriptor,
+                decision=decision,
+                outcome=_audit_outcome_for(exc.code),
+                error_code=exc.code,
+            )
+            self._log_failure(
+                exc,
+                request_tool_name=request.tool_name,
+                started_at=started_at,
+                descriptor=descriptor,
+                decision=decision,
+            )
             raise
+        except Exception as exc:
+            self._complete_audit(
+                audit_id=audit_id,
+                correlation_id=correlation_id,
+                tool_name=request.tool_name,
+                started_at=audit_started_at,
+                descriptor=descriptor,
+                decision=decision,
+                outcome=ToolAuditOutcome.INTERNAL_FAILURE,
+                error_code=ToolErrorCode.INTERNAL_ERROR,
+            )
+            normalized = ToolExecutionError(
+                ToolErrorCode.INTERNAL_ERROR,
+                "Tool execution failed.",
+                tool_name=request.tool_name,
+                correlation_id=correlation_id,
+            )
+            self._log_failure(
+                normalized,
+                request_tool_name=request.tool_name,
+                started_at=started_at,
+                descriptor=descriptor,
+                decision=decision,
+            )
+            raise normalized from exc
+
+        self._complete_audit(
+            audit_id=audit_id,
+            correlation_id=correlation_id,
+            tool_name=request.tool_name,
+            started_at=audit_started_at,
+            descriptor=descriptor,
+            decision=decision,
+            outcome=(
+                ToolAuditOutcome.SUCCEEDED
+                if result.success
+                else ToolAuditOutcome.TOOL_FAILED
+            ),
+            error_code=None if result.success else ToolErrorCode.EXECUTION_FAILED,
+        )
+        elapsed_ms = round((perf_counter() - started_at) * 1000, 3)
+        logger.info(
+            "tool_request_succeeded",
+            extra={
+                "correlation_id": correlation_id,
+                "tool_name": descriptor.name,
+                "sentinel_decision": decision.action.value,
+                "side_effect_level": descriptor.side_effect_level.value,
+                "execution_boundary": descriptor.execution_boundary.value,
+                "elapsed_ms": elapsed_ms,
+                "success": result.success,
+            },
+        )
+        return ToolExecutionOutcome(
+            tool_name=descriptor.name,
+            correlation_id=correlation_id,
+            sentinel_decision=decision,
+            result=result,
+        )
+
+    def _create_audit(self, record: ToolAuditRecord) -> None:
+        try:
+            self._audit_repository.create(record)
+        except Exception as exc:
+            raise _audit_persistence_error(
+                tool_name=record.tool_name,
+                correlation_id=record.correlation_id,
+            ) from exc
+
+    def _complete_audit(
+        self,
+        *,
+        audit_id: str,
+        correlation_id: str,
+        tool_name: str,
+        started_at: datetime,
+        descriptor: ToolDescriptor | None,
+        decision: AuthorizationDecision | None,
+        outcome: ToolAuditOutcome,
+        error_code: ToolErrorCode | None,
+    ) -> None:
+        try:
+            self._audit_repository.update(
+                ToolAuditRecord(
+                    audit_id=audit_id,
+                    correlation_id=correlation_id,
+                    tool_name=tool_name,
+                    side_effect_level=(
+                        descriptor.side_effect_level if descriptor is not None else None
+                    ),
+                    execution_boundary=(
+                        descriptor.execution_boundary if descriptor is not None else None
+                    ),
+                    sentinel_decision=decision.action if decision is not None else None,
+                    outcome=outcome,
+                    error_code=error_code,
+                    started_at=started_at,
+                    completed_at=datetime.now(UTC),
+                )
+            )
+        except Exception as exc:
+            raise _audit_persistence_error(
+                tool_name=tool_name,
+                correlation_id=correlation_id,
+            ) from exc
+
+    def _log_failure(
+        self,
+        exc: ToolExecutionError,
+        *,
+        request_tool_name: str,
+        started_at: float,
+        descriptor: ToolDescriptor | None,
+        decision: AuthorizationDecision | None,
+    ) -> None:
+        elapsed_ms = round((perf_counter() - started_at) * 1000, 3)
+        extra: dict[str, object] = {
+            "correlation_id": exc.correlation_id,
+            "tool_name": exc.tool_name or request_tool_name,
+            "elapsed_ms": elapsed_ms,
+            "error_code": exc.code.value,
+            **exc.safe_metadata,
+        }
+        if descriptor is not None:
+            extra["side_effect_level"] = descriptor.side_effect_level.value
+            extra["execution_boundary"] = descriptor.execution_boundary.value
+        if decision is not None:
+            extra["sentinel_decision"] = decision.action.value
+        logger.warning("tool_request_failed", extra=extra)
 
     def _validate_arguments(
         self,
@@ -211,3 +349,30 @@ class ToolExecutionCoordinator:
                 correlation_id=correlation_id,
             )
         return result
+
+
+def _audit_outcome_for(error_code: ToolErrorCode) -> ToolAuditOutcome:
+    outcomes = {
+        ToolErrorCode.TOOL_NOT_FOUND: ToolAuditOutcome.TOOL_NOT_FOUND,
+        ToolErrorCode.INVALID_ARGUMENTS: ToolAuditOutcome.INVALID_ARGUMENTS,
+        ToolErrorCode.APPROVAL_REQUIRED: ToolAuditOutcome.APPROVAL_REQUIRED,
+        ToolErrorCode.DENIED: ToolAuditOutcome.DENIED,
+        ToolErrorCode.SENTINEL_AUTHORIZATION_FAILED: (
+            ToolAuditOutcome.AUTHORIZATION_FAILED
+        ),
+        ToolErrorCode.EXECUTION_FAILED: ToolAuditOutcome.TOOL_FAILED,
+    }
+    return outcomes.get(error_code, ToolAuditOutcome.INTERNAL_FAILURE)
+
+
+def _audit_persistence_error(
+    *,
+    tool_name: str,
+    correlation_id: str,
+) -> ToolExecutionError:
+    return ToolExecutionError(
+        ToolErrorCode.INTERNAL_ERROR,
+        "Tool audit persistence failed.",
+        tool_name=tool_name,
+        correlation_id=correlation_id,
+    )

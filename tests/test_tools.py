@@ -30,6 +30,7 @@ from jarvis_core.tools import (
 )
 from jarvis_core.tools.builtins import RuntimeInfoTool
 from jarvis_core.tools.router import ToolExecutionCoordinator
+from tests.tool_audit_fakes import RecordingToolAuditRepository
 
 
 class NoArgs(BaseModel):
@@ -194,6 +195,7 @@ async def test_runtime_info_tool_executes_and_returns_safe_metadata() -> None:
     coordinator = ToolExecutionCoordinator(
         registry_with(tool),
         DefaultSentinelPolicy(),
+        RecordingToolAuditRepository(),
     )
 
     outcome = await coordinator.execute(
@@ -205,7 +207,7 @@ async def test_runtime_info_tool_executes_and_returns_safe_metadata() -> None:
     assert outcome.result.success is True
     assert outcome.result.data["platform_family"] == (platform.system() or "Unknown")
     assert outcome.result.data["python_version"] == platform.python_version()
-    assert outcome.result.data["jarvis_version"] == "0.8.0"
+    assert outcome.result.data["jarvis_version"] == "0.9.0"
     assert set(outcome.result.data) == {
         "platform_family",
         "python_version",
@@ -223,7 +225,11 @@ def test_runtime_info_descriptor_is_read_and_core() -> None:
 @pytest.mark.anyio
 async def test_runtime_info_response_excludes_sensitive_system_metadata() -> None:
     tool = RuntimeInfoTool()
-    coordinator = ToolExecutionCoordinator(registry_with(tool), DefaultSentinelPolicy())
+    coordinator = ToolExecutionCoordinator(
+        registry_with(tool),
+        DefaultSentinelPolicy(),
+        RecordingToolAuditRepository(),
+    )
 
     outcome = await coordinator.execute(
         ToolRequest(tool_name="system.runtime_info", arguments={})
@@ -242,7 +248,9 @@ async def test_runtime_info_response_excludes_sensitive_system_metadata() -> Non
 async def test_invalid_arguments_do_not_call_sentinel_or_execute_tool() -> None:
     tool = FakeTool(argument_model=RequiredArgs)
     sentinel = RecordingSentinel()
-    coordinator = ToolExecutionCoordinator(registry_with(tool), sentinel)
+    coordinator = ToolExecutionCoordinator(
+        registry_with(tool), sentinel, RecordingToolAuditRepository()
+    )
 
     with pytest.raises(ToolExecutionError) as exc_info:
         await coordinator.execute(ToolRequest(tool_name="test.fake", arguments={}))
@@ -260,7 +268,9 @@ async def test_sentinel_receives_trusted_registered_metadata_not_caller_spoofs()
         argument_model=SpoofArgs,
     )
     sentinel = RecordingSentinel()
-    coordinator = ToolExecutionCoordinator(registry_with(tool), sentinel)
+    coordinator = ToolExecutionCoordinator(
+        registry_with(tool), sentinel, RecordingToolAuditRepository()
+    )
 
     await coordinator.execute(
         ToolRequest(
@@ -332,7 +342,11 @@ async def test_default_sentinel_policy_denies_dangerous_tools() -> None:
 @pytest.mark.anyio
 async def test_ask_does_not_execute_tool() -> None:
     tool = FakeTool(side_effect_level=SideEffectLevel.WRITE)
-    coordinator = ToolExecutionCoordinator(registry_with(tool), DefaultSentinelPolicy())
+    coordinator = ToolExecutionCoordinator(
+        registry_with(tool),
+        DefaultSentinelPolicy(),
+        RecordingToolAuditRepository(),
+    )
 
     with pytest.raises(ToolExecutionError) as exc_info:
         await coordinator.execute(ToolRequest(tool_name="test.fake", arguments={}))
@@ -344,7 +358,11 @@ async def test_ask_does_not_execute_tool() -> None:
 @pytest.mark.anyio
 async def test_deny_does_not_execute_tool() -> None:
     tool = FakeTool(side_effect_level=SideEffectLevel.DANGEROUS)
-    coordinator = ToolExecutionCoordinator(registry_with(tool), DefaultSentinelPolicy())
+    coordinator = ToolExecutionCoordinator(
+        registry_with(tool),
+        DefaultSentinelPolicy(),
+        RecordingToolAuditRepository(),
+    )
 
     with pytest.raises(ToolExecutionError) as exc_info:
         await coordinator.execute(ToolRequest(tool_name="test.fake", arguments={}))
@@ -356,7 +374,9 @@ async def test_deny_does_not_execute_tool() -> None:
 @pytest.mark.anyio
 async def test_tool_exception_becomes_normalized_failure() -> None:
     tool = FakeTool(fail=True)
-    coordinator = ToolExecutionCoordinator(registry_with(tool), RecordingSentinel())
+    coordinator = ToolExecutionCoordinator(
+        registry_with(tool), RecordingSentinel(), RecordingToolAuditRepository()
+    )
 
     with pytest.raises(ToolExecutionError) as exc_info:
         await coordinator.execute(ToolRequest(tool_name="test.fake", arguments={}))
@@ -371,6 +391,7 @@ async def test_sentinel_exception_becomes_normalized_failure() -> None:
     coordinator = ToolExecutionCoordinator(
         registry_with(tool),
         RecordingSentinel(fail=True),
+        RecordingToolAuditRepository(),
     )
 
     with pytest.raises(ToolExecutionError) as exc_info:
@@ -384,7 +405,9 @@ async def test_sentinel_exception_becomes_normalized_failure() -> None:
 @pytest.mark.anyio
 async def test_correlation_id_preserved_when_supplied_and_generated_when_omitted() -> None:
     sentinel = RecordingSentinel()
-    coordinator = ToolExecutionCoordinator(registry_with(FakeTool()), sentinel)
+    coordinator = ToolExecutionCoordinator(
+        registry_with(FakeTool()), sentinel, RecordingToolAuditRepository()
+    )
 
     supplied = await coordinator.execute(
         ToolRequest(tool_name="test.fake", arguments={}, correlation_id="manual-tool")
@@ -404,7 +427,9 @@ async def test_tool_logs_omit_raw_arguments_and_results(tmp_path, caplog) -> Non
         argument_model=SecretArgs,
         result=ToolResult(success=True, data={"result": "secret-result"}),
     )
-    coordinator = ToolExecutionCoordinator(registry_with(tool), RecordingSentinel())
+    coordinator = ToolExecutionCoordinator(
+        registry_with(tool), RecordingSentinel(), RecordingToolAuditRepository()
+    )
     caplog.set_level("INFO", logger="jarvis_core.tools.router")
 
     await coordinator.execute(

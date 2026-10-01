@@ -24,7 +24,11 @@ def test_initialize_sqlite_creates_database_and_schema(tmp_path) -> None:
             for row in connection.execute("SELECT name FROM schema_migrations").fetchall()
         }
 
-    assert migration_names == {"bootstrap-v0.1", "working-memory-v0.3"}
+    assert migration_names == {
+        "bootstrap-v0.1",
+        "working-memory-v0.3",
+        "tool-audit-v0.9",
+    }
 
 
 def test_initialize_sqlite_rolls_back_failed_migration(tmp_path, monkeypatch) -> None:

@@ -63,7 +63,11 @@ def test_initialize_sqlite_creates_fresh_working_memory_schema(tmp_path) -> None
 
     initialize_sqlite(Settings(database_path=database_path))
 
-    assert migration_names(database_path) == {"bootstrap-v0.1", "working-memory-v0.3"}
+    assert migration_names(database_path) == {
+        "bootstrap-v0.1",
+        "working-memory-v0.3",
+        "tool-audit-v0.9",
+    }
     assert {"conversation_sessions", "conversation_messages"}.issubset(
         table_names(database_path)
     )
@@ -86,7 +90,11 @@ def test_initialize_sqlite_upgrades_existing_v2_bootstrap_schema_in_place(tmp_pa
 
     initialize_sqlite(Settings(database_path=database_path))
 
-    assert migration_names(database_path) == {"bootstrap-v0.1", "working-memory-v0.3"}
+    assert migration_names(database_path) == {
+        "bootstrap-v0.1",
+        "working-memory-v0.3",
+        "tool-audit-v0.9",
+    }
     with sqlite3.connect(database_path) as connection:
         existing_value = connection.execute(
             "SELECT value FROM existing_data WHERE id = 'keep'"

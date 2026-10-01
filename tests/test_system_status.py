@@ -39,6 +39,7 @@ from jarvis_core.tools.builtins import (
     create_builtin_tool_registry,
 )
 from jarvis_core.tools.router import ToolExecutionCoordinator
+from tests.tool_audit_fakes import RecordingToolAuditRepository
 
 
 def sample_status(
@@ -105,6 +106,7 @@ async def test_system_status_sentinel_allows_read_core_tool() -> None:
     coordinator = ToolExecutionCoordinator(
         registry_with_system_status(sample_status()),
         DefaultSentinelPolicy(),
+        RecordingToolAuditRepository(),
     )
 
     outcome = await coordinator.execute(
@@ -308,7 +310,9 @@ async def test_system_status_collector_failure_becomes_tool_execution_failed() -
 
     registry = ToolRegistry()
     registry.register(SystemStatusTool(collector=collector))
-    coordinator = ToolExecutionCoordinator(registry, DefaultSentinelPolicy())
+    coordinator = ToolExecutionCoordinator(
+        registry, DefaultSentinelPolicy(), RecordingToolAuditRepository()
+    )
 
     with pytest.raises(ToolExecutionError) as exc_info:
         await coordinator.execute(
@@ -366,6 +370,7 @@ async def test_system_status_logs_omit_raw_metric_payloads(caplog) -> None:
     coordinator = ToolExecutionCoordinator(
         registry_with_system_status(status),
         DefaultSentinelPolicy(),
+        RecordingToolAuditRepository(),
     )
     caplog.set_level("INFO", logger="jarvis_core.tools.router")
 

@@ -36,6 +36,7 @@ from jarvis_core.tools.builtins import (
     create_builtin_tool_registry,
 )
 from jarvis_core.tools.router import ToolExecutionCoordinator
+from tests.tool_audit_fakes import RecordingToolAuditRepository
 
 
 def sample_active_window(
@@ -93,6 +94,7 @@ async def test_active_window_sentinel_allows_read_core_tool() -> None:
     coordinator = ToolExecutionCoordinator(
         registry_with_active_window(sample_active_window()),
         DefaultSentinelPolicy(),
+        RecordingToolAuditRepository(),
     )
 
     outcome = await coordinator.execute(
@@ -337,7 +339,9 @@ async def test_active_window_collector_failure_becomes_tool_execution_failed() -
 
     registry = ToolRegistry()
     registry.register(ActiveWindowTool(collector=collector))
-    coordinator = ToolExecutionCoordinator(registry, DefaultSentinelPolicy())
+    coordinator = ToolExecutionCoordinator(
+        registry, DefaultSentinelPolicy(), RecordingToolAuditRepository()
+    )
 
     with pytest.raises(ToolExecutionError) as exc_info:
         await coordinator.execute(
@@ -398,6 +402,7 @@ async def test_active_window_logs_omit_sensitive_payloads(caplog) -> None:
     coordinator = ToolExecutionCoordinator(
         registry_with_active_window(active_window),
         DefaultSentinelPolicy(),
+        RecordingToolAuditRepository(),
     )
     caplog.set_level("INFO", logger="jarvis_core.tools.router")
 
