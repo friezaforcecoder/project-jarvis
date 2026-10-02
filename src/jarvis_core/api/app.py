@@ -14,10 +14,15 @@ from jarvis_core.intelligence.providers import OllamaProvider
 from jarvis_core.logging import configure_logging
 from jarvis_core.persistence import (
     SQLiteConversationRepository,
+    SQLiteToolApprovalRepository,
     SQLiteToolAuditRepository,
     initialize_sqlite,
 )
-from jarvis_core.sentinel import DefaultSentinelPolicy, Sentinel
+from jarvis_core.sentinel import (
+    DefaultSentinelPolicy,
+    Sentinel,
+    ToolApprovalBindingService,
+)
 from jarvis_core.tools import ToolRegistry
 from jarvis_core.tools.builtins import create_builtin_tool_registry
 from jarvis_core.tools.router import ToolExecutionCoordinator
@@ -58,6 +63,10 @@ def create_app(
     resolved_tool_registry = tool_registry or create_builtin_tool_registry()
     resolved_sentinel = sentinel or DefaultSentinelPolicy()
     tool_audit_repository = SQLiteToolAuditRepository(resolved_settings.database_path)
+    tool_approval_repository = SQLiteToolApprovalRepository(
+        resolved_settings.database_path
+    )
+    tool_approval_binding_service = ToolApprovalBindingService()
 
     @asynccontextmanager
     async def lifespan(fastapi_app: FastAPI) -> AsyncIterator[None]:
@@ -91,9 +100,12 @@ def create_app(
         resolved_tool_registry,
         resolved_sentinel,
         tool_audit_repository,
+        tool_approval_repository,
+        tool_approval_binding_service,
     )
     fastapi_app.state.tool_execution_coordinator = tool_execution_coordinator
     fastapi_app.state.tool_audit_repository = tool_audit_repository
+    fastapi_app.state.tool_approval_repository = tool_approval_repository
     fastapi_app.state.conversation_repository = SQLiteConversationRepository(
         resolved_settings.database_path
     )

@@ -4,7 +4,7 @@ Project J.A.R.V.I.S. is a local-first personal AI operating layer. The goal is n
 
 ## Current Status
 
-This repository contains the early JARVIS Core foundation. It starts a small local FastAPI service, initializes SQLite runtime storage, exposes health, text chat, and deterministic tool execution endpoints, defines typed contracts, routes text intelligence through provider-neutral interfaces, persists simple bounded conversation sessions, sends tool executions through Sentinel authorization, durably audits tool execution metadata without payloads, exposes read-only runtime/system-status/active-window/visible-applications tools, and supports narrow deterministic chat-assisted use of those core tools.
+This repository contains the early JARVIS Core foundation. It starts a small local FastAPI service, initializes SQLite runtime storage, exposes health, text chat, and deterministic tool execution endpoints, defines typed contracts, routes text intelligence through provider-neutral interfaces, persists simple bounded conversation sessions, sends tool executions through Sentinel authorization, supports short-lived direct-client approval receipts for Sentinel `ask` decisions, durably audits tool execution metadata without payloads, exposes read-only runtime/system-status/active-window/visible-applications tools, and supports narrow deterministic chat-assisted use of those core tools.
 
 The current proposed and implemented milestones are documented in:
 
@@ -17,6 +17,7 @@ The current proposed and implemented milestones are documented in:
 - `docs/tasks/ACTIVE_WINDOW_CONTEXT_V0.7.md`
 - [Visible Applications Context v0.8](docs/tasks/VISIBLE_APPLICATIONS_CONTEXT_V0.8.md) - explicit read-only visible desktop application names.
 - [Tool Execution Audit Trail v0.9](docs/tasks/TOOL_AUDIT_TRAIL_V0.9.md) - durable, payload-free Tool Fabric execution evidence.
+- [Sentinel Approval Receipts v0.10](docs/tasks/SENTINEL_APPROVAL_V0.10.md) - short-lived, one-time approval capabilities for trusted direct Tool Fabric clients.
 - [Provider Capability Contracts Phase 1](docs/tasks/PROVIDER_CAPABILITIES_PHASE_1.md) - merged metadata and deterministic selection contracts.
 - [Credential And Configuration Safety](docs/tasks/CREDENTIAL_CONFIG_SAFETY.md) - proposed specification; runtime implementation has not started.
 
@@ -118,7 +119,7 @@ curl http://127.0.0.1:8000/v1/health
 Expected semantic result:
 
 ```json
-{"status":"ok","service":"jarvis-core","version":"0.9.0"}
+{"status":"ok","service":"jarvis-core","version":"0.10.0"}
 ```
 
 ## Verify Chat
@@ -193,7 +194,7 @@ Expected semantic result:
     "data": {
       "platform_family": "Windows",
       "python_version": "3.12.x",
-      "jarvis_version": "0.9.0"
+      "jarvis_version": "0.10.0"
     },
     "error": null
   }
@@ -201,6 +202,42 @@ Expected semantic result:
 ```
 
 The exact platform and Python values depend on the machine running JARVIS. The tool returns only broad safe runtime metadata: platform family, Python version, and JARVIS version. It does not return username, hostname, IP addresses, environment variables, process lists, file contents, serial numbers, secrets, or local filesystem paths.
+
+## Direct Tool Approval Receipts
+
+JARVIS v0.10 adds a direct-only two-step approval flow for a trusted local client when Sentinel returns `ask`. No production write-capable tool is included in this milestone; the flow is exercised with test-only tools and is ready for a future explicitly scoped capability.
+
+The first exact direct request returns `409 tool_approval_required` with a separate challenge:
+
+```json
+{
+  "status": "error",
+  "error": {
+    "code": "tool_approval_required",
+    "message": "Tool approval is required.",
+    "correlation_id": "approval-example-1",
+    "tool_name": "configured.write_tool"
+  },
+  "approval": {
+    "approval_id": "generated-approval-uuid",
+    "expires_at": "timezone-aware-utc-timestamp"
+  }
+}
+```
+
+Grant that receipt without executing the tool:
+
+```bash
+curl -X POST http://127.0.0.1:8000/v1/tool-approvals/generated-approval-uuid/grant
+```
+
+The success response contains only `approval_id`, `status`, and `expires_at`. The client must then repeat the exact original `POST /v1/tools/execute` request, including the same `correlation_id`, and add the granted `approval_id`. The coordinator reruns Sentinel, verifies the receipt against the trusted registered descriptor and validated arguments, consumes it atomically, and only then calls the tool. A receipt can authorize at most one execution.
+
+Receipts expire after five minutes. They are bound with HMAC-SHA256 to the exact correlation ID, tool name, trusted side-effect level, trusted execution boundary, and validated arguments. The HMAC key exists only in the current process, so every outstanding receipt becomes invalid after restart. The SQLite record contains only the approval UUID, opaque request binding, lifecycle status, and four lifecycle timestamps; raw arguments, prompts, messages, results, reasons, paths, credentials, and secrets are not stored. Structured access logging redacts the approval UUID segment in the grant path.
+
+Sentinel remains authoritative on every attempt. `deny` cannot be overridden, and `allow` requests execute normally without consuming approval state. Chat and provider paths cannot create, receive, use, or grant approval IDs. Granting never executes a tool.
+
+This endpoint is a bootstrap boundary for a trusted client on the existing loopback-local service. v0.10 does not add authentication, multi-user identity, remote approval, an approval UI, voice approval, or a production side-effecting tool. Do not expose the service beyond a trusted local environment.
 
 ## Verify Tool Execution Audit Trail
 
@@ -507,7 +544,7 @@ Default Sentinel policy for direct tools:
 | `write` | `ask` |
 | `dangerous` | `deny` |
 
-In v0.4, `ask` means the API returns `409 tool_approval_required`; no approval UI or approval persistence exists yet. `dangerous` tools return `403 tool_denied`. Tools execute only when Sentinel returns `allow`.
+In v0.10, `ask` on the trusted direct Tool Fabric route uses the short-lived approval flow documented above. Chat still receives the existing safe `409 tool_approval_required` failure without an approval capability. `dangerous` tools return `403 tool_denied`, and no receipt can override that decision. There is still no approval UI or production write-capable tool.
 
 ## Provider Capability Contracts
 

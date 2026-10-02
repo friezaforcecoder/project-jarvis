@@ -15,6 +15,19 @@ from jarvis_core.audit import (
     ToolAuditRecord,
     ToolAuditRepository,
 )
+from jarvis_core.sentinel.approval import (
+    APPROVAL_LIFETIME,
+    ToolApprovalAlreadyConsumedError,
+    ToolApprovalBindingService,
+    ToolApprovalError,
+    ToolApprovalExpiredError,
+    ToolApprovalMismatchError,
+    ToolApprovalNotFoundError,
+    ToolApprovalRecord,
+    ToolApprovalRepository,
+    ToolApprovalStatus,
+    ToolApprovalUnavailableError,
+)
 from jarvis_core.sentinel.contracts import (
     AuthorizationAction,
     AuthorizationDecision,
@@ -23,6 +36,7 @@ from jarvis_core.sentinel.contracts import (
 )
 from jarvis_core.tools.contracts import (
     Tool,
+    ToolApprovalChallenge,
     ToolDescriptor,
     ToolExecutionContext,
     ToolRequest,
@@ -52,12 +66,21 @@ class ToolExecutionCoordinator:
         tool_registry: ToolRegistry,
         sentinel: Sentinel,
         audit_repository: ToolAuditRepository,
+        approval_repository: ToolApprovalRepository | None = None,
+        approval_binding_service: ToolApprovalBindingService | None = None,
     ) -> None:
         self._tool_registry = tool_registry
         self._sentinel = sentinel
         self._audit_repository = audit_repository
+        self._approval_repository = approval_repository
+        self._approval_binding_service = approval_binding_service
 
-    async def execute(self, request: ToolRequest) -> ToolExecutionOutcome:
+    async def execute(
+        self,
+        request: ToolRequest,
+        *,
+        allow_approval: bool = False,
+    ) -> ToolExecutionOutcome:
         """Execute one tool request through the safe Tool Fabric path."""
 
         correlation_id = request.correlation_id or str(uuid4())
@@ -107,18 +130,25 @@ class ToolExecutionCoordinator:
                 tool_name=descriptor.name,
                 correlation_id=correlation_id,
             )
-            if decision.action is AuthorizationAction.ASK:
-                raise ToolExecutionError(
-                    ToolErrorCode.APPROVAL_REQUIRED,
-                    "Tool approval is required.",
-                    tool_name=descriptor.name,
-                    correlation_id=correlation_id,
-                )
             if decision.action is AuthorizationAction.DENY:
                 raise ToolExecutionError(
                     ToolErrorCode.DENIED,
                     "Tool execution was denied by Sentinel.",
                     tool_name=descriptor.name,
+                    correlation_id=correlation_id,
+                )
+            if decision.action is AuthorizationAction.ASK:
+                if not allow_approval:
+                    raise ToolExecutionError(
+                        ToolErrorCode.APPROVAL_REQUIRED,
+                        "Tool approval is required.",
+                        tool_name=descriptor.name,
+                        correlation_id=correlation_id,
+                    )
+                self._resolve_direct_approval(
+                    request=request,
+                    descriptor=descriptor,
+                    arguments=arguments,
                     correlation_id=correlation_id,
                 )
 
@@ -212,6 +242,180 @@ class ToolExecutionCoordinator:
             correlation_id=correlation_id,
             sentinel_decision=decision,
             result=result,
+        )
+
+    def _resolve_direct_approval(
+        self,
+        *,
+        request: ToolRequest,
+        descriptor: ToolDescriptor,
+        arguments: BaseModel,
+        correlation_id: str,
+    ) -> None:
+        repository = self._approval_repository
+        binding_service = self._approval_binding_service
+        if repository is None or binding_service is None:
+            raise self._approval_internal_error(
+                tool_name=descriptor.name,
+                correlation_id=correlation_id,
+            )
+
+        try:
+            request_binding = binding_service.compute_binding(
+                correlation_id=correlation_id,
+                tool_name=descriptor.name,
+                side_effect_level=descriptor.side_effect_level,
+                execution_boundary=descriptor.execution_boundary,
+                arguments=arguments,
+            )
+        except ToolApprovalError as exc:
+            raise self._approval_internal_error(
+                tool_name=descriptor.name,
+                correlation_id=correlation_id,
+            ) from exc
+
+        now = datetime.now(UTC)
+        if request.approval_id is None:
+            record = ToolApprovalRecord(
+                approval_id=uuid4(),
+                request_binding=request_binding,
+                status=ToolApprovalStatus.PENDING,
+                created_at=now,
+                expires_at=now + APPROVAL_LIFETIME,
+            )
+            try:
+                repository.create(record)
+            except ToolApprovalError as exc:
+                raise self._approval_internal_error(
+                    tool_name=descriptor.name,
+                    correlation_id=correlation_id,
+                ) from exc
+            raise self._approval_required_error(
+                record,
+                tool_name=descriptor.name,
+                correlation_id=correlation_id,
+            )
+
+        try:
+            record = repository.get(request.approval_id)
+        except ToolApprovalError as exc:
+            raise self._approval_internal_error(
+                tool_name=descriptor.name,
+                correlation_id=correlation_id,
+            ) from exc
+
+        if record is None:
+            raise self._approval_invalid_error(
+                tool_name=descriptor.name,
+                correlation_id=correlation_id,
+            )
+        if now >= record.expires_at:
+            raise self._approval_expired_error(
+                tool_name=descriptor.name,
+                correlation_id=correlation_id,
+            )
+        if not binding_service.compare_bindings(
+            record.request_binding,
+            request_binding,
+        ):
+            raise self._approval_invalid_error(
+                tool_name=descriptor.name,
+                correlation_id=correlation_id,
+            )
+        if record.status is ToolApprovalStatus.PENDING:
+            raise self._approval_required_error(
+                record,
+                tool_name=descriptor.name,
+                correlation_id=correlation_id,
+            )
+        if record.status is ToolApprovalStatus.CONSUMED:
+            raise self._approval_invalid_error(
+                tool_name=descriptor.name,
+                correlation_id=correlation_id,
+            )
+
+        try:
+            repository.consume(
+                record.approval_id,
+                request_binding,
+                now=now,
+            )
+        except ToolApprovalExpiredError as exc:
+            raise self._approval_expired_error(
+                tool_name=descriptor.name,
+                correlation_id=correlation_id,
+            ) from exc
+        except (
+            ToolApprovalAlreadyConsumedError,
+            ToolApprovalMismatchError,
+            ToolApprovalNotFoundError,
+            ToolApprovalUnavailableError,
+        ) as exc:
+            raise self._approval_invalid_error(
+                tool_name=descriptor.name,
+                correlation_id=correlation_id,
+            ) from exc
+        except ToolApprovalError as exc:
+            raise self._approval_internal_error(
+                tool_name=descriptor.name,
+                correlation_id=correlation_id,
+            ) from exc
+
+    @staticmethod
+    def _approval_required_error(
+        record: ToolApprovalRecord,
+        *,
+        tool_name: str,
+        correlation_id: str,
+    ) -> ToolExecutionError:
+        return ToolExecutionError(
+            ToolErrorCode.APPROVAL_REQUIRED,
+            "Tool approval is required.",
+            tool_name=tool_name,
+            correlation_id=correlation_id,
+            approval_challenge=ToolApprovalChallenge(
+                approval_id=record.approval_id,
+                expires_at=record.expires_at,
+            ),
+        )
+
+    @staticmethod
+    def _approval_expired_error(
+        *,
+        tool_name: str,
+        correlation_id: str,
+    ) -> ToolExecutionError:
+        return ToolExecutionError(
+            ToolErrorCode.APPROVAL_EXPIRED,
+            "Tool approval receipt has expired.",
+            tool_name=tool_name,
+            correlation_id=correlation_id,
+        )
+
+    @staticmethod
+    def _approval_invalid_error(
+        *,
+        tool_name: str,
+        correlation_id: str,
+    ) -> ToolExecutionError:
+        return ToolExecutionError(
+            ToolErrorCode.APPROVAL_INVALID,
+            "Tool approval receipt is invalid.",
+            tool_name=tool_name,
+            correlation_id=correlation_id,
+        )
+
+    @staticmethod
+    def _approval_internal_error(
+        *,
+        tool_name: str,
+        correlation_id: str,
+    ) -> ToolExecutionError:
+        return ToolExecutionError(
+            ToolErrorCode.INTERNAL_ERROR,
+            "Tool approval operation failed.",
+            tool_name=tool_name,
+            correlation_id=correlation_id,
         )
 
     def _create_audit(self, record: ToolAuditRecord) -> None:
@@ -356,6 +560,8 @@ def _audit_outcome_for(error_code: ToolErrorCode) -> ToolAuditOutcome:
         ToolErrorCode.TOOL_NOT_FOUND: ToolAuditOutcome.TOOL_NOT_FOUND,
         ToolErrorCode.INVALID_ARGUMENTS: ToolAuditOutcome.INVALID_ARGUMENTS,
         ToolErrorCode.APPROVAL_REQUIRED: ToolAuditOutcome.APPROVAL_REQUIRED,
+        ToolErrorCode.APPROVAL_EXPIRED: ToolAuditOutcome.APPROVAL_EXPIRED,
+        ToolErrorCode.APPROVAL_INVALID: ToolAuditOutcome.APPROVAL_INVALID,
         ToolErrorCode.DENIED: ToolAuditOutcome.DENIED,
         ToolErrorCode.SENTINEL_AUTHORIZATION_FAILED: (
             ToolAuditOutcome.AUTHORIZATION_FAILED

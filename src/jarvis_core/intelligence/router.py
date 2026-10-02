@@ -318,7 +318,8 @@ class ChatService:
                     tool_name=descriptor.name,
                     arguments={},
                     correlation_id=correlation_id,
-                )
+                ),
+                allow_approval=False,
             )
         except ToolExecutionError as exc:
             elapsed_ms = round((perf_counter() - started_at) * 1000, 3)
