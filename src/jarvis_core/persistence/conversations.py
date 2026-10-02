@@ -38,6 +38,14 @@ class SQLiteConversationRepository:
     def load_recent_messages(self, session_id: str, limit: int) -> list[ConversationMessage]:
         """Load recent messages in conversational order, dropping orphaned assistant context."""
 
+        messages = self.load_transcript(session_id, limit)
+        if messages and messages[0].role is ConversationMessageRole.ASSISTANT:
+            messages = messages[1:]
+        return messages
+
+    def load_transcript(self, session_id: str, limit: int) -> list[ConversationMessage]:
+        """Load recent messages in conversational order for trusted local display."""
+
         if limit <= 0:
             return []
 
@@ -56,10 +64,7 @@ class SQLiteConversationRepository:
         except sqlite3.Error as exc:
             raise ConversationPersistenceError() from exc
 
-        messages = [self._message_from_row(row) for row in reversed(rows)]
-        if messages and messages[0].role is ConversationMessageRole.ASSISTANT:
-            messages = messages[1:]
-        return messages
+        return [self._message_from_row(row) for row in reversed(rows)]
 
     def append_successful_turn(
         self,
