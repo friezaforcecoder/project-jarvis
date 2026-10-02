@@ -1,0 +1,162 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="color-scheme" content="dark">
+    <title>J.A.R.V.I.S. Operator HUD</title>
+    <link rel="stylesheet" href="/assets/hud.css?v=0.11.0">
+    <script src="/assets/hud.js?v=0.11.0" defer></script>
+  </head>
+  <body>
+    <div class="hud-shell">
+      <header class="topbar">
+        <div class="brand-lockup" aria-label="JARVIS Operator HUD">
+          <div class="signal-mark" aria-hidden="true">
+            <span></span><span></span><span></span><span></span><span></span>
+          </div>
+          <div>
+            <p class="eyebrow">Operator HUD</p>
+            <h1>J.A.R.V.I.S.</h1>
+          </div>
+        </div>
+
+        <div class="topbar-actions">
+          <div class="core-state" id="core-state" data-state="connecting">
+            <span class="status-light" aria-hidden="true"></span>
+            <span id="core-state-label">Connecting</span>
+          </div>
+          <button
+            class="icon-button"
+            id="new-session-button"
+            type="button"
+            title="New conversation"
+            aria-label="Start a new conversation"
+          >+</button>
+        </div>
+      </header>
+
+      <main class="workspace">
+        <aside class="context-rail" aria-labelledby="context-heading">
+          <section class="rail-section identity-section">
+            <p class="section-label" id="context-heading">Core link</p>
+            <dl class="status-grid">
+              <div>
+                <dt>Service</dt>
+                <dd id="service-name">Awaiting Core</dd>
+              </div>
+              <div>
+                <dt>Version</dt>
+                <dd id="service-version">--</dd>
+              </div>
+              <div>
+                <dt>Model</dt>
+                <dd id="model-name">Not contacted</dd>
+              </div>
+            </dl>
+          </section>
+
+          <section class="rail-section">
+            <p class="section-label">Context requests</p>
+            <div class="quick-actions" role="group" aria-label="Context requests">
+              <button type="button" data-prompt="How is my PC doing?">
+                <span>System status</span><span aria-hidden="true">01</span>
+              </button>
+              <button type="button" data-prompt="What app am I using?">
+                <span>Foreground app</span><span aria-hidden="true">02</span>
+              </button>
+              <button type="button" data-prompt="What apps are currently running?">
+                <span>Visible apps</span><span aria-hidden="true">03</span>
+              </button>
+            </div>
+          </section>
+
+          <section class="rail-section session-section">
+            <p class="section-label">Session</p>
+            <p class="session-value" id="session-value">New conversation</p>
+          </section>
+        </aside>
+
+        <section class="conversation-panel" aria-labelledby="conversation-heading">
+          <div class="conversation-heading-row">
+            <div>
+              <p class="section-label">Conversation</p>
+              <h2 id="conversation-heading">Direct channel</h2>
+            </div>
+            <p class="turn-state" id="turn-state">Standing by</p>
+          </div>
+
+          <div
+            class="transcript"
+            id="transcript"
+            role="log"
+            aria-live="polite"
+            aria-relevant="additions"
+          >
+            <div class="welcome-state" id="welcome-state">
+              <p class="welcome-kicker">Core online</p>
+              <p class="welcome-title">Standing by.</p>
+              <p class="welcome-detail">What do you need?</p>
+            </div>
+          </div>
+
+          <div class="thinking-indicator" id="thinking-indicator" hidden>
+            <span></span><span></span><span></span>
+            <p>JARVIS is thinking</p>
+          </div>
+
+          <form class="composer" id="chat-form">
+            <label class="sr-only" for="message-input">Message JARVIS</label>
+            <textarea
+              id="message-input"
+              name="message"
+              rows="1"
+              maxlength="12000"
+              placeholder="Message JARVIS"
+              autocomplete="off"
+              required
+            ></textarea>
+            <button class="send-button" id="send-button" type="submit" disabled>Send</button>
+          </form>
+        </section>
+
+        <aside class="activity-rail" aria-labelledby="activity-heading">
+          <section class="rail-section activity-section">
+            <div class="activity-heading-row">
+              <p class="section-label" id="activity-heading">Activity</p>
+              <button
+                class="quiet-button"
+                id="clear-activity-button"
+                type="button"
+                title="Clear activity"
+              >Clear</button>
+            </div>
+            <ol class="activity-list" id="activity-list">
+              <li class="activity-empty">No tool activity</li>
+            </ol>
+          </section>
+
+          <section class="rail-section boundary-section">
+            <p class="section-label">Boundary</p>
+            <div class="boundary-line">
+              <span>Interface</span><strong>Local</strong>
+            </div>
+            <div class="boundary-line">
+              <span>Tool policy</span><strong>Sentinel</strong>
+            </div>
+            <div class="boundary-line">
+              <span>Memory</span><strong>Core</strong>
+            </div>
+          </section>
+        </aside>
+      </main>
+
+      <footer class="footer-strip">
+        <span>LOCAL OPERATOR CHANNEL</span>
+        <span id="footer-status">Waiting for JARVIS Core</span>
+      </footer>
+    </div>
+
+    <div class="toast-region" id="toast-region" aria-live="assertive"></div>
+  </body>
+</html>

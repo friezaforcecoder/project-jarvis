@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "project-jarvis-core"
-version = "0.10.0"
+version = "0.11.0"
 description = "Bootstrap foundation for the local-first JARVIS Core service."
 readme = "README.md"
 requires-python = ">=3.12"
@@ -15,6 +15,9 @@ dependencies = [
   "psutil>=5.9,<8.0",
   "uvicorn>=0.30,<1.0",
 ]
+
+[project.scripts]
+jarvis = "jarvis_core.__main__:main"
 
 [project.optional-dependencies]
 dev = [

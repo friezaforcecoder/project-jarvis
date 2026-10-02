@@ -65,6 +65,10 @@ class ConversationRepository(Protocol):
         """Load bounded recent messages in original conversational order."""
         ...
 
+    def load_transcript(self, session_id: str, limit: int) -> list[ConversationMessage]:
+        """Load bounded recent messages for display without prompt-context trimming."""
+        ...
+
     def append_successful_turn(
         self,
         *,

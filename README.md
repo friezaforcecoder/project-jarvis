@@ -4,7 +4,7 @@ Project J.A.R.V.I.S. is a local-first personal AI operating layer. The goal is n
 
 ## Current Status
 
-This repository contains the early JARVIS Core foundation. It starts a small local FastAPI service, initializes SQLite runtime storage, exposes health, text chat, and deterministic tool execution endpoints, defines typed contracts, routes text intelligence through provider-neutral interfaces, persists simple bounded conversation sessions, sends tool executions through Sentinel authorization, supports short-lived direct-client approval receipts for Sentinel `ask` decisions, durably audits tool execution metadata without payloads, exposes read-only runtime/system-status/active-window/visible-applications tools, and supports narrow deterministic chat-assisted use of those core tools.
+This repository contains the early JARVIS Core foundation and its first usable local Operator HUD. It starts a small local FastAPI service, initializes SQLite runtime storage, serves a responsive same-origin chat interface, exposes health, text chat, transcript, and deterministic tool execution endpoints, defines typed contracts, routes text intelligence through provider-neutral interfaces, persists simple bounded conversation sessions, sends tool executions through Sentinel authorization, supports short-lived direct-client approval receipts for Sentinel `ask` decisions, durably audits tool execution metadata without payloads, exposes read-only runtime/system-status/active-window/visible-applications tools, and supports narrow deterministic chat-assisted use of those core tools.
 
 The current proposed and implemented milestones are documented in:
 
@@ -18,6 +18,7 @@ The current proposed and implemented milestones are documented in:
 - [Visible Applications Context v0.8](docs/tasks/VISIBLE_APPLICATIONS_CONTEXT_V0.8.md) - explicit read-only visible desktop application names.
 - [Tool Execution Audit Trail v0.9](docs/tasks/TOOL_AUDIT_TRAIL_V0.9.md) - durable, payload-free Tool Fabric execution evidence.
 - [Sentinel Approval Receipts v0.10](docs/tasks/SENTINEL_APPROVAL_V0.10.md) - short-lived, one-time approval capabilities for trusted direct Tool Fabric clients.
+- [Operator HUD v0.11](docs/tasks/OPERATOR_HUD_V0.11.md) - packaged local interface for durable text conversation and explicit context requests.
 - [Provider Capability Contracts Phase 1](docs/tasks/PROVIDER_CAPABILITIES_PHASE_1.md) - merged metadata and deterministic selection contracts.
 - [Credential And Configuration Safety](docs/tasks/CREDENTIAL_CONFIG_SAFETY.md) - proposed specification; runtime implementation has not started.
 
@@ -90,7 +91,23 @@ Start JARVIS Core:
 python -m jarvis_core
 ```
 
+Open the Operator HUD automatically after Core becomes healthy:
+
+```bash
+python -m jarvis_core --open
+```
+
+An editable installation also provides the equivalent `jarvis --open` command.
+
 By default, the service listens on `127.0.0.1:8000` and creates its SQLite database at `data/jarvis-core.sqlite3`. The `data/` directory is local runtime state and is ignored by Git.
+
+## Operator HUD
+
+Open `http://127.0.0.1:8000/` while JARVIS Core is running. The packaged HUD uses only same-origin Core APIs and local assets; it loads no CDN scripts, remote fonts, analytics, or external UI resources.
+
+The HUD stores only the current session ID in browser storage. Conversation content remains authoritative in Core's SQLite working memory and is restored through the bounded read-only transcript endpoint when the HUD reopens. Starting a new conversation clears the HUD's local session pointer; it does not delete durable Core history.
+
+The System status, Foreground app, and Visible apps controls send explicit chat requests through the existing deterministic chat-tool route. The HUD does not collect desktop context automatically, execute operating-system actions directly, or bypass Tool Fabric and Sentinel.
 
 Configuration is read from environment variables:
 
@@ -119,7 +136,7 @@ curl http://127.0.0.1:8000/v1/health
 Expected semantic result:
 
 ```json
-{"status":"ok","service":"jarvis-core","version":"0.10.0"}
+{"status":"ok","service":"jarvis-core","version":"0.11.0"}
 ```
 
 ## Verify Chat
@@ -194,7 +211,7 @@ Expected semantic result:
     "data": {
       "platform_family": "Windows",
       "python_version": "3.12.x",
-      "jarvis_version": "0.10.0"
+      "jarvis_version": "0.11.0"
     },
     "error": null
   }
